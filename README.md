@@ -1,3 +1,6 @@
 # climate-risk-assessement
-climate risk assessment for companies in germany
+
+Klimarisikoanalyse durch selbst zusammengestelltes Klima-Ensemble CORDEX11
+
+Schadensanalyse durch selbst erstellte Schadensfunktion und automatisiertem Handlungskatalogkatalog
 
