@@ -1,4 +1,9 @@
-#Miniforge create environment
+#dowload Miniforge for environment, execute via VSC
+
+#Install those pakages for your environment
+
+!mamba list > mamba_requirements.txt
+print("✅ mamba_requirements.txt wurde erstellt.")
 
 
 
