@@ -1,1 +1,82 @@
 #dry run
+
+###Projektions 2006-2100
+
+
+import cdsapi
+import os
+
+client = cdsapi.Client()
+
+base_path = r"YourDataStore"
+os.makedirs(base_path, exist_ok=True)
+
+ensemble_list = [
+    {"gcm": "ichec_ec_earth", "rcm": "knmi_racmo22e", "ens": "r1i1p1"},
+    {"gcm": "mpi_m_mpi_esm_lr", "rcm": "clmcom_clm_cclm4_8_17", "ens": "r1i1p1"},
+    {"gcm": "ichec_ec_earth", "rcm": "smhi_rca4", "ens": "r1i1p1"},
+    {"gcm": "mohc_hadgem2_es", "rcm": "smhi_rca4", "ens": "r1i1p1"},
+    {"gcm": "cnrm_cerfacs_cm5", "rcm": "cnrm_aladin63", "ens": "r1i1p1"},
+    {"gcm": "ncc_noresm1_m", "rcm": "smhi_rca4", "ens": "r1i1p1"}
+]
+
+years_to_check = range(2006, 2101, 5)
+
+dataset = "projections-cordex-domains-single-levels"
+
+
+for model in ensemble_list:
+    gcm, rcm, ens = model["gcm"], model["rcm"], model["ens"]
+    
+    
+    model_folder = os.path.join(base_path, f"{gcm}_{rcm}")
+    os.makedirs(model_folder, exist_ok=True)
+    
+    print(f"\n Modell download: {gcm} / {rcm}")
+    
+    for y_start in years_to_check:
+        y_end = y_start + 4
+        
+        # Special rules for some modells: HadGEM (till 2099)
+        if "hadgem2" in gcm and y_end >= 2100:
+            y_end = 2099
+        elif y_end > 2100: 
+            y_end = 2100
+        
+        s_year, e_year = str(y_start), str(y_end)
+        filename = f"EuroCordex11_combiened_{gcm}_{rcm}_{s_year}_{e_year}.zip"
+        target_path = os.path.join(model_folder, filename)
+        
+      
+        if os.path.exists(target_path):
+            print(f"    [SKIP] {filename} already exists")
+            continue
+        
+
+        #You can check your api-request-code manuelly on the CDS-website by entering all your variables manually
+        request = {
+            "domain": "europe",
+            "experiment": "rcp_8_5",
+            "horizontal_resolution": "0_11_degree_x_0_11_degree",
+            "temporal_resolution": "daily_mean",
+            "variable": [
+                "maximum_2m_temperature_in_the_last_24_hours",
+                "mean_precipitation_flux"
+            ],
+            "gcm_model": gcm,
+            "rcm_model": rcm,
+            "ensemble_member": ens,
+            "start_year": [s_year],
+            "end_year": [e_year],
+            "format": "zip"
+        }
+
+        try:
+            print(f"    [SEND] downlads combination {s_year}-{e_year}...")
+            client.retrieve(dataset, request).download(target_path)
+            print(f"    [SUCCESS] {filename} saved.")
+        except Exception as e:
+            
+            print(f"    [INFO] Block {s_year}-{e_year} not available: {e}")
+
+print("\n Combi-Ensemble done")
