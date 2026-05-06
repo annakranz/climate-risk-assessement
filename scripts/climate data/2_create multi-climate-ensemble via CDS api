@@ -1,6 +1,7 @@
 #dry run
 
-###Projektions 2006-2100
+###Download Projektions for the years 2006-2100
+###Copernicus Data Store: We are useing the Dataset "CORDEX regional climate model data on single levels" with 0,11°
 
 
 import cdsapi
