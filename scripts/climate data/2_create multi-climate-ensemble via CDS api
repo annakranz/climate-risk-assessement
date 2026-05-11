@@ -3,9 +3,154 @@
 
 ###Download Projektions-Ensemble:
 
+import cdsapi
+import os
+import urllib3
+
+# SSL-Warnungen unterdrücken
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+client = cdsapi.Client(verify=False)
 
 
-###Download Historical-Ensemble
+base_archive = r"S:\KFE\Studenten\_NH\Klimarisikoanalyse\git\Maximum 2m temperature in the last 24 hours\CDS_Ensemble\rcp4.5"
+
+
+ensemble_list = [
+    {"gcm": "ichec_ec_earth", "rcm": "knmi_racmo22e", "ens": "r1i1p1"},
+    {"gcm": "ichec_ec_earth", "rcm": "smhi_rca4", "ens": "r12i1p1"},
+    {"gcm": "mpi_m_mpi_esm_lr", "rcm": "smhi_rca4", "ens": "r1i1p1"},
+    {"gcm": "mohc_hadgem2_es", "rcm": "mohc_hadrem3_ga7_05", "ens": "r1i1p1"},
+    {"gcm": "mohc_hadgem2_es", "rcm": "smhi_rca4", "ens": "r1i1p1"},
+    {"gcm": "cnrm_cerfacs_cm5", "rcm": "cnrm_aladin63", "ens": "r1i1p1"},
+    {"gcm": "ncc_noresm1_m", "rcm": "smhi_rca4", "ens": "r1i1p1"},
+    {"gcm": "cccma_canesm2", "rcm": "clmcom_clm_cclm4_8_17", "ens": "r1i1p1"},
+    {"gcm": "cnrm_cerfacs_cm5", "rcm": "clmcom_eth_cosmo_crclim", "ens": "r1i1p1"},
+    {"gcm": "ipsl_cm5a_mr", "rcm": "gerics_remo2015", "ens": "r1i1p1"},
+    {"gcm": "ipsl_cm5a_mr", "rcm": "smhi_rca4", "ens": "r1i1p1"}
+]
+
+
+year_blocks = []
+for y in range(2006, 2085, 5):
+    year_blocks.append((str(y), str(y + 4)))
+
+dataset = "projections-cordex-domains-single-levels"
+
+for model in ensemble_list:
+    gcm, rcm, ens = model["gcm"], model["rcm"], model["ens"]
+    model_folder = os.path.join(base_archive, f"{gcm}_{rcm}")
+    os.makedirs(model_folder, exist_ok=True)
+    
+    print(f"\n>>> STARTE RCP 4.5 DOWNLOAD: {gcm} / {rcm}")
+    
+    for start, end in year_blocks:
+        filename = f"EUR11_RCP45_{gcm}_{rcm}_{start}_{end}.zip"
+        target_path = os.path.join(model_folder, filename)
+        
+        # Bestehende Dateien überspringen
+        if os.path.exists(target_path):
+            print(f"    [SKIP] {filename} bereits vorhanden.")
+            continue
+
+        request = {
+            "domain": "europe",
+            "experiment": "rcp_4_5",
+            "horizontal_resolution": "0_11_degree_x_0_11_degree",
+            "temporal_resolution": "daily_mean",
+            "variable": ["maximum_2m_temperature_in_the_last_24_hours"],
+            "gcm_model": gcm,
+            "rcm_model": rcm,
+            "ensemble_member": ens,
+            "start_year": [start],
+            "end_year": [end],
+            "format": "zip"
+        }
+
+        try:
+            print(f"    -> Fordere Block {start}-{end} an...")
+            client.retrieve(dataset, request).download(target_path)
+            print(f"    ✅ {start}-{end} erfolgreich geladen.")
+        except Exception as e:
+            print(f"    ❌ Fehler bei Block {start}-{end}: {e}")
+
+print("\n--- Gesamtes Ensemble (2006-2085) abgeschlossen! ---")
+
+
+###Download Historical-Ensemble:
+
+import cdsapi
+import os
+import urllib3
+
+# SSL-Warnungen unterdrücken
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+client = cdsapi.Client(verify=False)
+
+
+base_archive = r"S:\KFE\Studenten\_NH\Klimarisikoanalyse\git\Maximum 2m temperature in the last 24 hours\CDS_Ensemble\hist"
+
+
+ensemble_list = [
+    {"gcm": "ichec_ec_earth", "rcm": "knmi_racmo22e", "ens": "r1i1p1"},
+    {"gcm": "ichec_ec_earth", "rcm": "smhi_rca4", "ens": "r12i1p1"},
+    {"gcm": "mpi_m_mpi_esm_lr", "rcm": "smhi_rca4", "ens": "r1i1p1"},
+    {"gcm": "mohc_hadgem2_es", "rcm": "mohc_hadrem3_ga7_05", "ens": "r1i1p1"},
+    {"gcm": "mohc_hadgem2_es", "rcm": "smhi_rca4", "ens": "r1i1p1"},
+    {"gcm": "cnrm_cerfacs_cm5", "rcm": "cnrm_aladin63", "ens": "r1i1p1"},
+    {"gcm": "ncc_noresm1_m", "rcm": "smhi_rca4", "ens": "r1i1p1"},
+    {"gcm": "cccma_canesm2", "rcm": "clmcom_clm_cclm4_8_17", "ens": "r1i1p1"},
+    {"gcm": "cnrm_cerfacs_cm5", "rcm": "clmcom_eth_cosmo_crclim", "ens": "r1i1p1"},
+    {"gcm": "ipsl_cm5a_mr", "rcm": "gerics_remo2015", "ens": "r1i1p1"},
+    {"gcm": "ipsl_cm5a_mr", "rcm": "smhi_rca4", "ens": "r1i1p1"}
+]
+
+
+year_blocks = []
+for y in range(1971, 2005, 5):
+    year_blocks.append((str(y), str(y + 4)))
+
+dataset = "projections-cordex-domains-single-levels"
+
+for model in ensemble_list:
+    gcm, rcm, ens = model["gcm"], model["rcm"], model["ens"]
+    model_folder = os.path.join(base_archive, f"{gcm}_{rcm}")
+    os.makedirs(model_folder, exist_ok=True)
+    
+    print(f"\n>>> STARTE RCP hist DOWNLOAD: {gcm} / {rcm}")
+    
+    for start, end in year_blocks:
+        filename = f"EUR11_hist_{gcm}_{rcm}_{start}_{end}.zip"
+        target_path = os.path.join(model_folder, filename)
+        
+        # Bestehende Dateien überspringen
+        if os.path.exists(target_path):
+            print(f"    [SKIP] {filename} bereits vorhanden.")
+            continue
+
+        request = {
+            "domain": "europe",
+            "experiment": "historical",
+            "horizontal_resolution": "0_11_degree_x_0_11_degree",
+            "temporal_resolution": "daily_mean",
+            "variable": ["maximum_2m_temperature_in_the_last_24_hours"],
+            "gcm_model": gcm,
+            "rcm_model": rcm,
+            "ensemble_member": ens,
+            "start_year": [start],
+            "end_year": [end],
+            "format": "zip"
+        }
+
+        try:
+            print(f"    -> Fordere Block {start}-{end} an...")
+            client.retrieve(dataset, request).download(target_path)
+            print(f"    ✅ {start}-{end} erfolgreich geladen.")
+        except Exception as e:
+            print(f"    ❌ Fehler bei Block {start}-{end}: {e}")
+
+print("\n--- Gesamtes Ensemble (1971-2005) abgeschlossen! ---")
 
 
           
