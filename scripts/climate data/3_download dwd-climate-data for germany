@@ -1,1 +1,85 @@
+import os
+import requests
+from bs4 import BeautifulSoup
+from tqdm import tqdm
 
+# --- KONFIGURATION ---
+# Zielordner für tmax
+DOWNLOAD_DIR = r"S:\KFE\Studenten\_NH\Klimarisikoanalyse\git\Maximum 2m temperature in the last 24 hours\DWD"
+BASE_URL = "https://opendata.dwd.de/climate_environment/CDC/grids_germany/daily/hyras_de/air_temperature_max/"
+
+# Ordner erstellen, falls er noch nicht existiert
+if not os.path.exists(DOWNLOAD_DIR):
+    os.makedirs(DOWNLOAD_DIR)
+    print(f"Ordner wurde erstellt: {DOWNLOAD_DIR}")
+
+def download_hyras_tmax():
+    print(f"Scanne DWD Server nach HYRAS Tmax Dateien (1971-2005)...")
+    
+    try:
+        # Abrufen der Verzeichnisliste
+        response = requests.get(BASE_URL, timeout=30)
+        response.raise_for_status()
+        soup = BeautifulSoup(response.text, 'html.parser')
+        
+        # Alle Links extrahieren, die auf .nc enden
+        all_files = [node.get('href') for node in soup.find_all('a') if node.get('href').endswith('.nc')]
+        
+        # Filter auf Jahre 1971 bis 2005
+        nc_files = []
+        for f in all_files:
+            try:
+                # Extrahiert das Jahr aus dem Dateinamen (sucht nach 4 aufeinanderfolgenden Ziffern)
+                # Beispiel: tasmax_hyras_1_1971_v6-1_de.nc
+                year_parts = [int(s) for s in f.replace('_', '.').split('.') if s.isdigit() and len(s) == 4]
+                if year_parts and 1971 <= year_parts[0] <= 2005:
+                    nc_files.append(f)
+            except:
+                continue
+
+        if not nc_files:
+            print("Keine passenden .nc Dateien für 1971-2005 gefunden.")
+            return
+
+        print(f"{len(nc_files)} Dateien zur Synchronisation gefunden.\n")
+
+        for file_name in nc_files:
+            file_url = BASE_URL + file_name
+            target_path = os.path.join(DOWNLOAD_DIR, file_name)
+
+            # Prüfen, ob die Datei bereits lokal existiert
+            if os.path.exists(target_path):
+                print(f"Bereits vorhanden: {file_name}")
+                continue
+
+            # Download-Prozess
+            try:
+                with requests.get(file_url, stream=True, timeout=60) as r_file:
+                    r_file.raise_for_status()
+                    total_size = int(r_file.headers.get('content-length', 0))
+                    
+                    with open(target_path, 'wb') as f, tqdm(
+                        desc=f"Lade {file_name}",
+                        total=total_size,
+                        unit='iB',
+                        unit_scale=True,
+                        unit_divisor=1024,
+                    ) as bar:
+                        for chunk in r_file.iter_content(chunk_size=65536):
+                            if chunk:
+                                f.write(chunk)
+                                bar.update(len(chunk))
+            except Exception as e:
+                print(f"\nFehler beim Download von {file_name}: {e}")
+                if os.path.exists(target_path):
+                    os.remove(target_path)
+
+        print("\n" + "="*40)
+        print(f"FERTIG! Alle tmax-Dateien (1971-2005) liegen unter:")
+        print(f"{DOWNLOAD_DIR}")
+
+    except Exception as e:
+        print(f"Kritischer Fehler bei der Server-Verbindung: {e}")
+
+if __name__ == "__main__":
+    download_hyras_tmax()
