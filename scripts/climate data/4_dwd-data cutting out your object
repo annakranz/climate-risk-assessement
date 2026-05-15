@@ -1,4 +1,93 @@
+#####################################################################################################################################
 
+import xarray as xr
+import os
+import glob
+import re
+
+# --- KONFIGURATION ---
+# Ordner mit den heruntergeladenen TMEAN-Dateien (Rohdaten)
+INPUT_DIR = r"S:\KFE\Studenten\_NH\Klimarisikoanalyse\git\2m_air_temperature\dwd"
+# Die EINE Zieldatei für Würzburg (Zeitreihe)
+OUTPUT_FILE = r"S:\KFE\Studenten\_NH\Klimarisikoanalyse\git\2m_air_temperature\dwd_wuerzburg"
+# Koordinaten für Würzburg
+LAT_WUE, LON_WUE = 49.79, 9.93
+
+def process_tmean_wuerzburg():
+    # 1. Alle .nc Dateien finden
+    search_pattern = os.path.join(INPUT_DIR, "*.nc")
+    all_files = glob.glob(search_pattern)
+    
+    # 2. Beste Versionen filtern (v6-0 bevorzugen)
+    best_files = {}
+    for fpath in all_files:
+        fname = os.path.basename(fpath)
+        year_match = re.search(r"(\d{4})", fname)
+        if year_match:
+            year = year_match.group(1)
+            if year not in best_files:
+                best_files[year] = fpath
+            else:
+                curr_name = os.path.basename(best_files[year])
+                # Logik: Falls v6-1 existiert, aber v6-0 gefunden wird, v6-0 nehmen (oder umgekehrt, falls gewünscht)
+                if "v6-0" in fname and "v6-1" in curr_name:
+                    best_files[year] = fpath
+    
+    sorted_files = [best_files[year] for year in sorted(best_files.keys())]
+    
+    if not sorted_files:
+        print(f"Keine Dateien in {INPUT_DIR} gefunden!")
+        return
+
+    datasets = []
+    print(f"Extrahiere Würzburg aus {len(sorted_files)} Tmean-Dateien...")
+
+    # 3. Dateien einzeln bearbeiten
+    for fpath in sorted_files:
+        jahr = re.search(r"(\d{4})", os.path.basename(fpath)).group(1)
+        try:
+            # decode_coords="all" für korrekte Handhabung der Gitter
+            with xr.open_dataset(fpath, decode_coords="all") as ds:
+                # Distanzberechnung zu Würzburg
+                dist = ((ds.lat - LAT_WUE)**2 + (ds.lon - LON_WUE)**2)
+                
+                # Ausschnitt laden (Puffer 0.05 Grad)
+                subset = ds.where(dist < 0.05, drop=True).load()
+                
+                if len(subset.time) > 0:
+                    datasets.append(subset)
+                    print(f"Jahr {jahr} geladen...", end="\r")
+        except Exception as e:
+            print(f"\nFehler im Jahr {jahr}: {e}")
+
+    if not datasets:
+        print("\nFehler: Keine Daten extrahiert.")
+    else:
+        # 4. Zusammenfügen zur Zeitreihe
+        print("\nFüge Jahre zusammen...")
+        full_ds = xr.concat(datasets, dim="time")
+
+        # 5. Variable identifizieren
+        # Bei Mitteltemperatur meist 'tas'
+        possible_vars = ['tas', 'tmean', 'absolute_temperature']
+        var_name = [v for v in full_ds.data_vars if v in possible_vars or 'tas' in v.lower()][0]
+        
+        # 6. Umrechnung Kelvin -> Celsius
+        full_ds['tmean_c'] = full_ds[var_name] - 273.15
+        full_ds['tmean_c'].attrs['units'] = 'degC'
+        full_ds['tmean_c'].attrs['long_name'] = 'Mean Air Temperature Wuerzburg'
+
+        # 7. Speichern (Nur die Celsius Variable)
+        print("Speichere finale Datei...")
+        full_ds[['tmean_c']].to_netcdf(OUTPUT_FILE)
+        
+        print("\n" + "="*40)
+        print(f"ERFOLG: Mitteltemperatur-Zeitreihe erstellt unter:\n{OUTPUT_FILE}")
+        print(f"Zeitraum: {full_ds.time.dt.year.min().values} bis {full_ds.time.dt.year.max().values}")
+
+if __name__ == "__main__":
+    process_tmean_wuerzburg()
+#####################################################################################################################################
 import xarray as xr
 import os
 import glob
