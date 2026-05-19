@@ -2,6 +2,26 @@
 #Download Projektions for the years 2006-2085 and historical data for the years 1971-2005
 #Copernicus Data Store: We are useing the Dataset "CORDEX regional climate model data on single levels" with 0,11°
 #####################################################################################################################################
+This is the api-request for the CDS-dataset
+You have to adjust the variables in the script. Therefore you can click though the dataset variables manually, at the end you can the the full
+api-request:
+
+
+     request = {
+            "domain": "europe",
+            "experiment": "historical",                                    ###adjust
+            "horizontal_resolution": "0_11_degree_x_0_11_degree",
+            "temporal_resolution": "daily_mean",                           ###adjust                 
+            "variable": ["maximum_2m_temperature_in_the_last_24_hours"],   ###adjust
+            "gcm_model": gcm,
+            "rcm_model": rcm,
+            "ensemble_member": ens,
+            "start_year": [start],
+            "end_year": [end],
+            "format": "zip"
+        }
+
+#####################################################################################################################################
 #Download Projektions-Ensemble 2006-2085:
 
 
