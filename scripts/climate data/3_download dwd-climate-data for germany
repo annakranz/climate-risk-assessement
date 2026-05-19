@@ -1,6 +1,6 @@
 ###########################################################################################################################
-BASE URL for dwd-data :"https://opendata.dwd.de/climate_environment/CDC/grids_germany/daily/hyras_de/____VARIABLE___/" 
-variable: 
+BASE URL for dwd-data :"https://opendata.dwd.de/climate_environment/CDC/grids_germany/daily/hyras_de/VARIABLE/" 
+VARIABLE: 
 air_temperature_mean
 air_temperature_max 
 air_temperature_min 
