@@ -1,20 +1,20 @@
-###Download Projektions for the years 2006-2085 and historical data for the years 1971-2005
-###Copernicus Data Store: We are useing the Dataset "CORDEX regional climate model data on single levels" with 0,11°
+#####################################################################################################################################
+#Download Projektions for the years 2006-2085 and historical data for the years 1971-2005
+#Copernicus Data Store: We are useing the Dataset "CORDEX regional climate model data on single levels" with 0,11°
+#####################################################################################################################################
+#Download Projektions-Ensemble 2006-2085:
 
-###Download Projektions-Ensemble:
+
 
 import cdsapi
 import os
 import urllib3
 
-# SSL-Warnungen unterdrücken
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 client = cdsapi.Client(verify=False)
 
-
-base_archive = r"S:\KFE\Studenten\_NH\Klimarisikoanalyse\git\Maximum 2m temperature in the last 24 hours\CDS_Ensemble\rcp4.5"
-
+base_archive = r"YOUR FOLDER"
 
 ensemble_list = [
     {"gcm": "ichec_ec_earth", "rcm": "knmi_racmo22e", "ens": "r1i1p1"},
@@ -42,7 +42,7 @@ for model in ensemble_list:
     model_folder = os.path.join(base_archive, f"{gcm}_{rcm}")
     os.makedirs(model_folder, exist_ok=True)
     
-    print(f"\n>>> STARTE RCP 4.5 DOWNLOAD: {gcm} / {rcm}")
+    print(f"\n>>> RCP 4.5 DOWNLOAD: {gcm} / {rcm}")
     
     for start, end in year_blocks:
         filename = f"EUR11_RCP45_{gcm}_{rcm}_{start}_{end}.zip"
@@ -50,7 +50,7 @@ for model in ensemble_list:
         
         # Bestehende Dateien überspringen
         if os.path.exists(target_path):
-            print(f"    [SKIP] {filename} bereits vorhanden.")
+            print(f"    [SKIP] {filename} already downloaded.")
             continue
 
         request = {
@@ -68,28 +68,27 @@ for model in ensemble_list:
         }
 
         try:
-            print(f"    -> Fordere Block {start}-{end} an...")
+            print(f"   -> timeline{start}-{end}...")
             client.retrieve(dataset, request).download(target_path)
-            print(f"    ✅ {start}-{end} erfolgreich geladen.")
+            print(f"    ✅ timeline{start}-{end}.")
         except Exception as e:
-            print(f"    ❌ Fehler bei Block {start}-{end}: {e}")
+            print(f"    ❌ failed {start}-{end}: {e}")
 
-print("\n--- Gesamtes Ensemble (2006-2085) abgeschlossen! ---")
+print("\n--- (2006-2085) finished! ---")
 
-
-###Download Historical-Ensemble:
+#####################################################################################################################################
+#Download Historical-Ensemble 2071-2005:
 
 import cdsapi
 import os
 import urllib3
 
-# SSL-Warnungen unterdrücken
+
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 client = cdsapi.Client(verify=False)
 
-
-base_archive = r"S:\KFE\Studenten\_NH\Klimarisikoanalyse\git\Maximum 2m temperature in the last 24 hours\CDS_Ensemble\hist"
+base_archive = r"YOUR FOLDER NAME"
 
 
 ensemble_list = [
@@ -118,22 +117,22 @@ for model in ensemble_list:
     model_folder = os.path.join(base_archive, f"{gcm}_{rcm}")
     os.makedirs(model_folder, exist_ok=True)
     
-    print(f"\n>>> STARTE RCP hist DOWNLOAD: {gcm} / {rcm}")
+    print(f"\n>>> RCP hist DOWNLOAD: {gcm} / {rcm}")
     
     for start, end in year_blocks:
         filename = f"EUR11_hist_{gcm}_{rcm}_{start}_{end}.zip"
         target_path = os.path.join(model_folder, filename)
         
-        # Bestehende Dateien überspringen
+        
         if os.path.exists(target_path):
-            print(f"    [SKIP] {filename} bereits vorhanden.")
+            print(f"    [SKIP] {filename} already downloaded.")
             continue
 
         request = {
             "domain": "europe",
             "experiment": "historical",
             "horizontal_resolution": "0_11_degree_x_0_11_degree",
-            "temporal_resolution": "daily_mean",
+            "temporal_resolution": "daily_mean",                                       
             "variable": ["maximum_2m_temperature_in_the_last_24_hours"],
             "gcm_model": gcm,
             "rcm_model": rcm,
@@ -144,13 +143,13 @@ for model in ensemble_list:
         }
 
         try:
-            print(f"    -> Fordere Block {start}-{end} an...")
+            print(f"    -> timeline {start}-{end} ...")
             client.retrieve(dataset, request).download(target_path)
-            print(f"    ✅ {start}-{end} erfolgreich geladen.")
+            print(f"    ✅ {start}-{end} finished.")
         except Exception as e:
-            print(f"    ❌ Fehler bei Block {start}-{end}: {e}")
+            print(f"    ❌ failed {start}-{end}: {e}")
 
-print("\n--- Gesamtes Ensemble (1971-2005) abgeschlossen! ---")
+print("\n---finished(1971-2005) ! ---")
 
 
           
