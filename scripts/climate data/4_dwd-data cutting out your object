@@ -1,24 +1,27 @@
 #####################################################################################################################################
-#For dwd-data with kelvin into °C (air_temperature_mean, air_temperature_max, air_temperature_min)
+#air_temperature_mean 
 
-import xarray as xr
+
+
 import os
 import glob
 import re
+import xarray as xr
 
 
-INPUT_DIR = r"YOUR_DWD_FILES_DIC"                               #change name
+INPUT_DIR = r"YOUR DWD FOLDER NAME"
+OUTPUT_FILE = r"YOUR FILE NAME"
 
-OUTPUT_FILE = r"FILE_NAME"                                      #change name
+TARGET_LAT = xx.xx
+TARGET_LON = x.xx
 
-LAT_WUE, LON_WUE = XX.XX, XX.XX                                 #change lat,lon
+COORDINATE_BUFFER = 0.05
 
-def process_tmean_city():                                       #change name
+def process_daily_mean_temperature():
     
     search_pattern = os.path.join(INPUT_DIR, "*.nc")
     all_files = glob.glob(search_pattern)
     
-   
     best_files = {}
     for fpath in all_files:
         fname = os.path.basename(fpath)
@@ -29,86 +32,91 @@ def process_tmean_city():                                       #change name
                 best_files[year] = fpath
             else:
                 curr_name = os.path.basename(best_files[year])
-                # Logik: Falls v6-1 existiert, aber v6-0 gefunden wird, v6-0 nehmen (oder umgekehrt, falls gewünscht)
+                
                 if "v6-0" in fname and "v6-1" in curr_name:
                     best_files[year] = fpath
     
     sorted_files = [best_files[year] for year in sorted(best_files.keys())]
     
     if not sorted_files:
-        print(f"Keine Dateien in {INPUT_DIR} gefunden!")
+        print(f"Error: No NetCDF (.nc) files found in {INPUT_DIR}!")
         return
 
     datasets = []
-    print(f"Extrahiere Würzburg aus {len(sorted_files)} Tmean-Dateien...")
+    print(f"Extracting target region from {len(sorted_files)} daily mean temperature files...")
 
-    # 3. Dateien einzeln bearbeiten
+   
     for fpath in sorted_files:
-        jahr = re.search(r"(\d{4})", os.path.basename(fpath)).group(1)
+        year = re.search(r"(\d{4})", os.path.basename(fpath)).group(1)
         try:
             
             with xr.open_dataset(fpath, decode_coords="all") as ds:
-               
-                dist = ((ds.lat - LAT_WUE)**2 + (ds.lon - LON_WUE)**2)
+                
+                dist = ((ds.lat - TARGET_LAT)**2 + (ds.lon - TARGET_LON)**2)
                 
                 
-                subset = ds.where(dist < 0.05, drop=True).load()
+                subset = ds.where(dist < COORDINATE_BUFFER, drop=True).load()
                 
                 if len(subset.time) > 0:
                     datasets.append(subset)
-                    print(f"Jahr {jahr} geladen...", end="\r")
+                    print(f"Year {year} successfully loaded...", end="\r")
         except Exception as e:
-            print(f"\nFehler im Jahr {jahr}: {e}")
+            print(f"\nError processing year {year}: {e}")
 
     if not datasets:
-        print("\nFehler: Keine Daten extrahiert.")
+        print("\nError: No data could be extracted.")
     else:
-        
-        print("\nFüge Jahre zusammen...")
+        print("\nConcatenating annual datasets into a continuous time series...")
         full_ds = xr.concat(datasets, dim="time")
 
-       
-        possible_vars = ['tas', 'tmean']
+        possible_vars = ['tas', 'tmean', 'absolute_temperature']
         var_name = [v for v in full_ds.data_vars if v in possible_vars or 'tas' in v.lower()][0]
         
-        
+       
         full_ds['tmean_c'] = full_ds[var_name] - 273.15
         full_ds['tmean_c'].attrs['units'] = 'degC'
-        full_ds['tmean_c'].attrs['long_name'] = 'Mean Air Temperature Wuerzburg'
+        full_ds['tmean_c'].attrs['long_name'] = 'Regional Mean Air Temperature'
 
-        )
-        print("Speichere finale Datei...")
+       
+        print("Saving final consolidated NetCDF file...")
+        
+       
+        output_dir = os.path.dirname(OUTPUT_FILE)
+        if output_dir and not os.path.exists(output_dir):
+            os.makedirs(output_dir)
+            
         full_ds[['tmean_c']].to_netcdf(OUTPUT_FILE)
         
         print("\n" + "="*40)
-        print(f"ERFOLG: Mitteltemperatur-Zeitreihe erstellt unter:\n{OUTPUT_FILE}")
-        print(f"Zeitraum: {full_ds.time.dt.year.min().values} bis {full_ds.time.dt.year.max().values}")
+        print(f"SUCCESS: Regional time series created at:\n{OUTPUT_FILE}")
+        print(f"Covered Period: {full_ds.time.dt.year.min().values} to {full_ds.time.dt.year.max().values}")
 
 if __name__ == "__main__":
-    process_tmean_city()                                                    #change name
-#####################################################################################################################################
-#precipitaion
+    process_daily_mean_temperature()
 
-import xarray as xr
+
+
+#####################################################################################################################################
+#air_temperature_max
+
+
+
 import os
 import glob
 import re
+import xarray as xr
 
-# --- KONFIGURATION ---
-# Ordner mit den heruntergeladenen Niederschlags-Dateien (Rohdaten)
-INPUT_DIR = r"S:\KFE\Studenten\_NH\Klimarisikoanalyse\git\Mean_precipitaion\dwd"
-# Die EINE Zieldatei für Würzburg (Zeitreihe)
-OUTPUT_FILE = r"S:\KFE\Studenten\_NH\Klimarisikoanalyse\git\Mean_precipitaion\dwd_wuerzburg"
+INPUT_DIR = r"YOUR DWD FOLDER"
+OUTPUT_FILE = r"YOUR FILE NAME"
 
-# Koordinaten für Würzburg
-LAT_WUE, LON_WUE = 49.79, 9.93
+TARGET_LAT = xx.xx
+TARGET_LON = x.xx
+COORDINATE_BUFFER = 0.05
 
-def process_pr_wuerzburg():
-    # 1. Alle .nc Dateien finden
+def process_daily_maximum_temperature():
     search_pattern = os.path.join(INPUT_DIR, "*.nc")
     all_files = glob.glob(search_pattern)
     
-    # 2. Beste Versionen filtern
     best_files = {}
     for fpath in all_files:
         fname = os.path.basename(fpath)
@@ -125,54 +133,217 @@ def process_pr_wuerzburg():
     sorted_files = [best_files[year] for year in sorted(best_files.keys())]
     
     if not sorted_files:
-        print(f"Keine Dateien in {INPUT_DIR} gefunden!")
+        print(f"Error: No NetCDF (.nc) files found in {INPUT_DIR}!")
         return
 
     datasets = []
-    print(f"Extrahiere Würzburg aus {len(sorted_files)} Niederschlags-Dateien...")
+    print(f"Extracting target region from {len(sorted_files)} daily maximum temperature files...")
 
-    # 3. Dateien einzeln bearbeiten
     for fpath in sorted_files:
-        jahr = re.search(r"(\d{4})", os.path.basename(fpath)).group(1)
+        year = re.search(r"(\d{4})", os.path.basename(fpath)).group(1)
         try:
             with xr.open_dataset(fpath, decode_coords="all") as ds:
-                # Distanzberechnung
-                dist = ((ds.lat - LAT_WUE)**2 + (ds.lon - LON_WUE)**2)
-                
-                # Ausschnitt laden (Puffer 0.05 Grad)
-                subset = ds.where(dist < 0.05, drop=True).load()
+                dist = ((ds.lat - TARGET_LAT)**2 + (ds.lon - TARGET_LON)**2)
+                subset = ds.where(dist < COORDINATE_BUFFER, drop=True).load()
                 
                 if len(subset.time) > 0:
                     datasets.append(subset)
-                    print(f"Jahr {jahr} geladen...", end="\r")
+                    print(f"Year {year} successfully loaded...", end="\r")
         except Exception as e:
-            print(f"\nFehler im Jahr {jahr}: {e}")
+            print(f"\nError processing year {year}: {e}")
 
     if not datasets:
-        print("\nFehler: Keine Daten extrahiert.")
+        print("\nError: No data could be extracted.")
     else:
-        # 4. Zusammenfügen
-        print("\nFüge Jahre zusammen...")
+        print("\nConcatenating annual datasets into a continuous time series...")
         full_ds = xr.concat(datasets, dim="time")
 
-        # 5. Variable identifizieren
-        # Bei Niederschlag meist 'pr' oder 'precipitation'
+        possible_vars = ['tasmax', 'tmax', 'absolute_temperature']
+        var_name = [v for v in full_ds.data_vars if v in possible_vars or 'tmax' in v.lower()][0]
+        
+        full_ds['tmax_c'] = full_ds[var_name] - 273.15
+        full_ds['tmax_c'].attrs['units'] = 'degC'
+        full_ds['tmax_c'].attrs['long_name'] = 'Regional Maximum Air Temperature'
+
+        print("Saving final consolidated NetCDF file...")
+        
+        output_dir = os.path.dirname(OUTPUT_FILE)
+        if output_dir and not os.path.exists(output_dir):
+            os.makedirs(output_dir)
+            
+        full_ds[['tmax_c']].to_netcdf(OUTPUT_FILE)
+        
+        print("\n" + "="*40)
+        print(f"SUCCESS: Regional time series created at:\n{OUTPUT_FILE}")
+        print(f"Covered Period: {full_ds.time.dt.year.min().values} to {full_ds.time.dt.year.max().values}")
+
+if __name__ == "__main__":
+    process_daily_maximum_temperature()
+
+#####################################################################################################################################
+#air_temperature_min
+
+
+
+import os
+import glob
+import re
+import xarray as xr
+
+INPUT_DIR = r"YOUR DWD FOLDER"
+OUTPUT_FILE = r"CITY FILE"
+
+TARGET_LAT = xx.xx
+TARGET_LON = x.xx
+COORDINATE_BUFFER = 0.05
+
+def process_daily_minimum_temperature():
+    search_pattern = os.path.join(INPUT_DIR, "*.nc")
+    all_files = glob.glob(search_pattern)
+    
+    best_files = {}
+    for fpath in all_files:
+        fname = os.path.basename(fpath)
+        year_match = re.search(r"(\d{4})", fname)
+        if year_match:
+            year = year_match.group(1)
+            if year not in best_files:
+                best_files[year] = fpath
+            else:
+                curr_name = os.path.basename(best_files[year])
+                if "v6-0" in fname and "v6-1" in curr_name:
+                    best_files[year] = fpath
+    
+    sorted_files = [best_files[year] for year in sorted(best_files.keys())]
+    
+    if not sorted_files:
+        print(f"Error: No NetCDF (.nc) files found in {INPUT_DIR}!")
+        return
+
+    datasets = []
+    print(f"Extracting target region from {len(sorted_files)} daily minimum temperature files...")
+
+    for fpath in sorted_files:
+        year = re.search(r"(\d{4})", os.path.basename(fpath)).group(1)
+        try:
+            with xr.open_dataset(fpath, decode_coords="all") as ds:
+                dist = ((ds.lat - TARGET_LAT)**2 + (ds.lon - TARGET_LON)**2)
+                subset = ds.where(dist < COORDINATE_BUFFER, drop=True).load()
+                
+                if len(subset.time) > 0:
+                    datasets.append(subset)
+                    print(f"Year {year} successfully loaded...", end="\r")
+        except Exception as e:
+            print(f"\nError processing year {year}: {e}")
+
+    if not datasets:
+        print("\nError: No data could be extracted.")
+    else:
+        print("\nConcatenating annual datasets into a continuous time series...")
+        full_ds = xr.concat(datasets, dim="time")
+
+        possible_vars = ['tasmin', 'tmin', 'absolute_temperature']
+        var_name = [v for v in full_ds.data_vars if v in possible_vars or 'tmin' in v.lower()][0]
+        
+        full_ds['tmin_c'] = full_ds[var_name] - 273.15
+        full_ds['tmin_c'].attrs['units'] = 'degC'
+        full_ds['tmin_c'].attrs['long_name'] = 'Regional Minimum Air Temperature'
+
+        print("Saving final consolidated NetCDF file...")
+        
+        output_dir = os.path.dirname(OUTPUT_FILE)
+        if output_dir and not os.path.exists(output_dir):
+            os.makedirs(output_dir)
+            
+        full_ds[['tmin_c']].to_netcdf(OUTPUT_FILE)
+        
+        print("\n" + "="*40)
+        print(f"SUCCESS: Regional time series created at:\n{OUTPUT_FILE}")
+        print(f"Covered Period: {full_ds.time.dt.year.min().values} to {full_ds.time.dt.year.max().values}")
+
+if __name__ == "__main__":
+    process_daily_minimum_temperature()
+
+#####################################################################################################################################
+#precipitaion
+
+
+
+import os
+import glob
+import re
+import xarray as xr
+
+INPUT_DIR = r"YOUR DWD FOLDER"
+OUTPUT_FILE = r"CITY FILE"
+
+TARGET_LAT = xx.xx
+TARGET_LON = x.xx
+COORDINATE_BUFFER = 0.05
+
+def process_daily_precipitation():
+    search_pattern = os.path.join(INPUT_DIR, "*.nc")
+    all_files = glob.glob(search_pattern)
+    
+    best_files = {}
+    for fpath in all_files:
+        fname = os.path.basename(fpath)
+        year_match = re.search(r"(\d{4})", fname)
+        if year_match:
+            year = year_match.group(1)
+            if year not in best_files:
+                best_files[year] = fpath
+            else:
+                curr_name = os.path.basename(best_files[year])
+                if "v6-0" in fname and "v6-1" in curr_name:
+                    best_files[year] = fpath
+    
+    sorted_files = [best_files[year] for year in sorted(best_files.keys())]
+    
+    if not sorted_files:
+        print(f"Error: No NetCDF (.nc) files found in {INPUT_DIR}!")
+        return
+
+    datasets = []
+    print(f"Extracting target region from {len(sorted_files)} daily precipitation files...")
+
+    for fpath in sorted_files:
+        year = re.search(r"(\d{4})", os.path.basename(fpath)).group(1)
+        try:
+            with xr.open_dataset(fpath, decode_coords="all") as ds:
+                dist = ((ds.lat - TARGET_LAT)**2 + (ds.lon - TARGET_LON)**2)
+                subset = ds.where(dist < COORDINATE_BUFFER, drop=True).load()
+                
+                if len(subset.time) > 0:
+                    datasets.append(subset)
+                    print(f"Year {year} successfully loaded...", end="\r")
+        except Exception as e:
+            print(f"\nError processing year {year}: {e}")
+
+    if not datasets:
+        print("\nError: No data could be extracted.")
+    else:
+        print("\nConcatenating annual datasets into a continuous time series...")
+        full_ds = xr.concat(datasets, dim="time")
+
         possible_vars = ['pr', 'precipitation', 'precip']
         var_name = [v for v in full_ds.data_vars if v in possible_vars or 'pr' in v.lower()][0]
         
-        # 6. Metadaten & Bereinigung
-        # Wichtig: Hier KEINE Subtraktion von 273.15!
         full_ds['pr_mm'] = full_ds[var_name]
         full_ds['pr_mm'].attrs['units'] = 'mm'
         full_ds['pr_mm'].attrs['long_name'] = 'Daily precipitation amount'
 
-        # 7. Speichern
-        print("Speichere finale Datei...")
+        print("Saving final consolidated NetCDF file...")
+        
+        output_dir = os.path.dirname(OUTPUT_FILE)
+        if output_dir and not os.path.exists(output_dir):
+            os.makedirs(output_dir)
+            
         full_ds[['pr_mm']].to_netcdf(OUTPUT_FILE)
         
         print("\n" + "="*40)
-        print(f"ERFOLG: Niederschlags-Zeitreihe erstellt unter:\n{OUTPUT_FILE}")
-        print(f"Zeitraum: {full_ds.time.dt.year.min().values} bis {full_ds.time.dt.year.max().values}")
+        print(f"SUCCESS: Regional time series created at:\n{OUTPUT_FILE}")
+        print(f"Covered Period: {full_ds.time.dt.year.min().values} to {full_ds.time.dt.year.max().values}")
 
 if __name__ == "__main__":
-    process_pr_wuerzburg()
+    process_daily_precipitation()
