@@ -19,7 +19,7 @@ import re
 
 
 
-DOWNLOAD_DIR = r"YOUR_PATH"                                                   #change name
+DOWNLOAD_DIR = r"YOUR_PATH"                                                           #change name
 
 BASE_URL = "https://opendata.dwd.de/climate_environment/CDC/grids_germany/daily/hyras_de/air_temperature_mean/"
 
@@ -27,8 +27,8 @@ if not os.path.exists(DOWNLOAD_DIR):
     os.makedirs(DOWNLOAD_DIR)
     print(f"dictionary: {DOWNLOAD_DIR}")
 
-def download_hyras_tmean_1971_2005():                                         #change name
-    print(f" HYRAS Tmean (1971-2005)...")                                     #change name
+def download_hyras_tmean_1971_2005():                                                  #change name
+    print(f" HYRAS Tmean (1971-2005)...")                                              #change name
     
     try:
         
@@ -108,7 +108,7 @@ from tqdm import tqdm
 import re
 
 
-DOWNLOAD_DIR = r"YOUR_PATH"                                                            #change name
+DOWNLOAD_DIR = r"YOUR_PATH"                                                               #change name
                                                            
 BASE_URL = "https://opendata.dwd.de/climate_environment/CDC/grids_germany/daily/hyras_de/precipitation/"
 
@@ -116,9 +116,9 @@ if not os.path.exists(DOWNLOAD_DIR):
     os.makedirs(DOWNLOAD_DIR)
     print(f"dictionary: {DOWNLOAD_DIR}")
 
-def download_hyras_precipitation_1971_2005():                                          #change name
+def download_hyras_precipitation_1971_2005():                                             #change name
 
-    print(f"precipiation files (1971-2005)...")                                        #change name
+    print(f"precipiation files (1971-2005)...")                                           #change name
     
     try:
         response = requests.get(BASE_URL, timeout=30)
@@ -175,7 +175,7 @@ def download_hyras_precipitation_1971_2005():                                   
                     os.remove(target_path) 
 
         print("\n" + "="*40)
-        print(f"FINISHED! precipiation files (1971-2005) :")                                  #change name
+        print(f"FINISHED! precipiation files (1971-2005) :")                              #change name
 
         print(f"{DOWNLOAD_DIR}")
 
@@ -183,4 +183,4 @@ def download_hyras_precipitation_1971_2005():                                   
         print(f"server connection failed: {e}")
 
 if __name__ == "__main__":
-    download_hyras_precipitation_1971_2005()                                                  #change name
+    download_hyras_precipitation_1971_2005()                                              #change name
