@@ -11,7 +11,7 @@ BASE_ARCHIVE_DIR = r"YOUR FOLDER HIST/PROJ"
 OUTPUT_DIR = r"CITY FOLDER HIST/PROJ"
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
-LOCAL_WORK_DIR = os.path.join(os.environ['USERPROFILE'], "Climate_Local_Work_Tmin")
+LOCAL_WORK_DIR = os.path.join(os.environ['USERPROFILE'], "Climate_Local_Work_T")
 
 LAT_BOUNDS = [xx.x, xx.x]
 LON_BOUNDS = [xx.x, xx.x]
@@ -28,22 +28,22 @@ TARGET_MODELS = [
     {"gcm": "ipsl_cm5a_mr", "rcm": "smhi_rca4", "ens": "r1i1p1"}
 ]
 
-print("🚀 Starting extraction and bounding-box cropping for TMAX...")
+print("Starting extraction and bounding-box cropping...")
 
 for model in TARGET_MODELS:
     model_folder_name = f"{model['gcm']}_{model['rcm']}"
     model_folder = os.path.join(BASE_ARCHIVE_DIR, model_folder_name)
-    final_output_file = os.path.join(OUTPUT_DIR, f"regional_{model_folder_name}_tmax.nc")
+    final_output_file = os.path.join(OUTPUT_DIR, f"regional_{model_folder_name}_t.nc")
     
     if not os.path.isdir(model_folder):
-        print(f"⚠️ Directory not found, skipping model: {model_folder_name}")
+        print(f"Directory not found, skipping model: {model_folder_name}")
         continue
         
     if os.path.exists(final_output_file):
-        print(f"⏭️ File already exists, skipping processing for: {model_folder_name}")
+        print(f"File already exists, skipping processing for: {model_folder_name}")
         continue
     
-    print(f"\n📦 Processing dataset: {model_folder_name}")
+    print(f"\nProcessing dataset: {model_folder_name}")
     
     current_temp_dir = os.path.join(LOCAL_WORK_DIR, model_folder_name)
     if os.path.exists(current_temp_dir): 
@@ -71,18 +71,18 @@ for model in TARGET_MODELS:
                 
                 ds_cropped = ds.where(mask, drop=True)
                 
-                local_temp_output = os.path.join(current_temp_dir, "temp_tmax_processed.nc")
+                local_temp_output = os.path.join(current_temp_dir, "temp_t_processed.nc")
                 print("  -> Compiling and saving multi-file NetCDF dataset...")
                 ds_cropped.load().to_netcdf(local_temp_output)
                 
                 shutil.move(local_temp_output, final_output_file)
                 
-            print(f"✅ Success! Regional subset compiled for model: {model_folder_name}")
+            print(f"Success! Regional subset compiled for model: {model_folder_name}")
         else:
-            print("⚠️ Warning: No NetCDF (.nc) files detected after extraction phase.")
+            print("Warning: No NetCDF (.nc) files detected after extraction phase.")
 
     except Exception as e:
-        print(f"❌ Error encountered while processing {model_folder_name}: {e}")
+        print(f"Error encountered while processing {model_folder_name}: {e}")
         
     finally:
         time.sleep(1)
