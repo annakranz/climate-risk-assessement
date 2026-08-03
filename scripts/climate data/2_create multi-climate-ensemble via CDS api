@@ -1,18 +1,19 @@
 #####################################################################################################################################
-#Download Projektions for the years 2006-2085 and historical data for the years 1971-2005
-#Copernicus Data Store: We are useing the Dataset "CORDEX regional climate model data on single levels" with 0,11°
+DISCRIBTION:
+Download Projektions for the years 2006-2085 and historical data for the years 1971-2005
+Copernicus Data Store: We are useing the Dataset "CORDEX regional climate model data on single levels" with 0,11°
 #####################################################################################################################################
-This is the api-request for the CDS-dataset
+This is the api-request for the CDS-dataset.
 You have to adjust the variables in the script. Therefore you can click though the dataset variables manually, at the end you can the the full
 api-request:
 
 
      request = {
             "domain": "europe",
-            "experiment": "historical",                                    ###adjust
+            "experiment": "historical",                                    
             "horizontal_resolution": "0_11_degree_x_0_11_degree",
-            "temporal_resolution": "daily_mean",                           ###adjust                 
-            "variable": ["maximum_2m_temperature_in_the_last_24_hours"],   ###adjust
+            "temporal_resolution": "daily_mean",                                            
+            "variable": ["maximum_2m_temperature_in_the_last_24_hours"],   
             "gcm_model": gcm,
             "rcm_model": rcm,
             "ensemble_member": ens,
@@ -21,10 +22,12 @@ api-request:
             "format": "zip"
         }
 
+
+
+
 #####################################################################################################################################
 #Download Projektions-Ensemble 2006-2085:
-
-
+#####################################################################################################################################
 
 import cdsapi
 import os
@@ -40,13 +43,9 @@ ensemble_list = [
     {"gcm": "ichec_ec_earth", "rcm": "knmi_racmo22e", "ens": "r1i1p1"},
     {"gcm": "ichec_ec_earth", "rcm": "smhi_rca4", "ens": "r12i1p1"},
     {"gcm": "mpi_m_mpi_esm_lr", "rcm": "smhi_rca4", "ens": "r1i1p1"},
-    {"gcm": "mohc_hadgem2_es", "rcm": "mohc_hadrem3_ga7_05", "ens": "r1i1p1"},
     {"gcm": "mohc_hadgem2_es", "rcm": "smhi_rca4", "ens": "r1i1p1"},
     {"gcm": "cnrm_cerfacs_cm5", "rcm": "cnrm_aladin63", "ens": "r1i1p1"},
     {"gcm": "ncc_noresm1_m", "rcm": "smhi_rca4", "ens": "r1i1p1"},
-    {"gcm": "cccma_canesm2", "rcm": "clmcom_clm_cclm4_8_17", "ens": "r1i1p1"},
-    {"gcm": "cnrm_cerfacs_cm5", "rcm": "clmcom_eth_cosmo_crclim", "ens": "r1i1p1"},
-    {"gcm": "ipsl_cm5a_mr", "rcm": "gerics_remo2015", "ens": "r1i1p1"},
     {"gcm": "ipsl_cm5a_mr", "rcm": "smhi_rca4", "ens": "r1i1p1"}
 ]
 
@@ -96,9 +95,10 @@ for model in ensemble_list:
 
 print("\n--- (2006-2085) finished! ---")
 
+
 #####################################################################################################################################
 #Download Historical-Ensemble 2071-2005:
-
+#####################################################################################################################################
 import cdsapi
 import os
 import urllib3
@@ -115,13 +115,9 @@ ensemble_list = [
     {"gcm": "ichec_ec_earth", "rcm": "knmi_racmo22e", "ens": "r1i1p1"},
     {"gcm": "ichec_ec_earth", "rcm": "smhi_rca4", "ens": "r12i1p1"},
     {"gcm": "mpi_m_mpi_esm_lr", "rcm": "smhi_rca4", "ens": "r1i1p1"},
-    {"gcm": "mohc_hadgem2_es", "rcm": "mohc_hadrem3_ga7_05", "ens": "r1i1p1"},
     {"gcm": "mohc_hadgem2_es", "rcm": "smhi_rca4", "ens": "r1i1p1"},
     {"gcm": "cnrm_cerfacs_cm5", "rcm": "cnrm_aladin63", "ens": "r1i1p1"},
     {"gcm": "ncc_noresm1_m", "rcm": "smhi_rca4", "ens": "r1i1p1"},
-    {"gcm": "cccma_canesm2", "rcm": "clmcom_clm_cclm4_8_17", "ens": "r1i1p1"},
-    {"gcm": "cnrm_cerfacs_cm5", "rcm": "clmcom_eth_cosmo_crclim", "ens": "r1i1p1"},
-    {"gcm": "ipsl_cm5a_mr", "rcm": "gerics_remo2015", "ens": "r1i1p1"},
     {"gcm": "ipsl_cm5a_mr", "rcm": "smhi_rca4", "ens": "r1i1p1"}
 ]
 
@@ -171,5 +167,3 @@ for model in ensemble_list:
 
 print("\n---finished(1971-2005) ! ---")
 
-
-          
