@@ -1,5 +1,6 @@
 ###########################################################################################################################
 DISCRIBTION:
+V06 matches the latest version of the dwd-data, so this script loads just the latest uploaded versions.
 
 BASE URL for dwd-data :"https://opendata.dwd.de/climate_environment/CDC/grids_germany/daily/hyras_de/VARIABLE/" 
 VARIABLE: 
