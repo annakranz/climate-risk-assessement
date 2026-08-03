@@ -3,13 +3,10 @@ DISCRIBTION:
 In total 55 nc.data are getting merged into one. In conclusion one point (your demand position) is cutted out.
 #####################################################################################################################################
 
-
-
-
+ 
 #####################################################################################################################################
-air_temperature_mean 
-
-
+For dwd-data kelvin into °C (air_temperature_mean, air_temperature_max, air_temperature_min) and Preciptation in mm
+#####################################################################################################################################
 
 import os
 import re
@@ -17,12 +14,12 @@ import glob
 import numpy as np
 import xarray as xr
 
-# --- CONFIGURATION ---
+
 # Target coordinates (e.g., location of interest)
 TARGET_LAT = 49.79
 TARGET_LON = 9.93
 
-# File paths (using relative paths for portability across operating systems)
+
 INPUT_DIR = os.path.join(".", "data", "tmax")
 OUTPUT_FILE = os.path.join(".", "output", "tmax_point_location.nc")
 
@@ -30,7 +27,6 @@ def extract_single_point_timeseries(target_lat=TARGET_LAT, target_lon=TARGET_LON
     search_pattern = os.path.join(INPUT_DIR, "*.nc")
     all_files = glob.glob(search_pattern)
     
-    # Filter files to prefer newer data versions (e.g., v6-1 over v6-0)
     best_files = {}
     for fpath in all_files:
         fname = os.path.basename(fpath)
@@ -120,3 +116,6 @@ def extract_single_point_timeseries(target_lat=TARGET_LAT, target_lon=TARGET_LON
 
 if __name__ == "__main__":
     extract_single_point_timeseries()
+
+
+
