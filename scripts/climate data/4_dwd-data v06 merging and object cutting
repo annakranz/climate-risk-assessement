@@ -1,5 +1,8 @@
 #####################################################################################################################################
-#one script for each variable down below
+DISCRIBTION:
+V06 matches the latest version of the dwd-data, so this script loads the latest uploaded versions. In total 55 nc.data
+
+one script for each variable down below
 #####################################################################################################################################
 #air_temperature_mean 
 
