@@ -1,0 +1,129 @@
+#####################################################################################################################################
+DISCRIBTION:
+Also the CDS-multi-ensembles are getting cut out on one demanded point.
+Script for historical data and projections are diffrent.
+#####################################################################################################################################
+
+
+####################################################################################################################################
+Historical
+####################################################################################################################################
+
+import os
+import glob
+import re
+import zipfile
+import shutil
+import time
+import xarray as xr
+import numpy as np
+
+# --- CONFIGURATION ---
+# Target coordinates for single-point extraction
+TARGET_LAT = 49.79
+TARGET_LON = 9.93
+
+# Paths (using relative paths for portability)
+BASE_ARCHIVE_DIR = os.path.join(".", "data", "cds_ensemble", "hist")
+OUTPUT_DIR = os.path.join(".", "output", "hist_point")
+LOCAL_WORK_DIR = os.path.join(".", "temp_work")
+
+os.makedirs(OUTPUT_DIR, exist_ok=True)
+
+# List of target GCM / RCM model combinations
+TARGET_MODELS = [
+    {"gcm": "ichec_ec_earth", "rcm": "knmi_racmo22e", "ens": "r1i1p1"},
+    {"gcm": "ichec_ec_earth", "rcm": "smhi_rca4", "ens": "r12i1p1"},
+    {"gcm": "mpi_m_mpi_esm_lr", "rcm": "smhi_rca4", "ens": "r1i1p1"},
+    {"gcm": "mohc_hadgem2_es", "rcm": "smhi_rca4", "ens": "r1i1p1"},
+    {"gcm": "cnrm_cerfacs_cm5", "rcm": "cnrm_aladin63", "ens": "r1i1p1"},
+    {"gcm": "ncc_noresm1_m", "rcm": "smhi_rca4", "ens": "r1i1p1"},
+    {"gcm": "cnrm_cerfacs_cm5", "rcm": "clmcom_eth_cosmo_crclim", "ens": "r1i1p1"},
+    {"gcm": "ipsl_cm5a_mr", "rcm": "gerics_remo2015", "ens": "r1i1p1"},
+    {"gcm": "ipsl_cm5a_mr", "rcm": "smhi_rca4", "ens": "r1i1p1"}
+]
+
+def process_point_extraction():
+    print("🚀 Starting archive extraction and single-point time series extraction (TMAX)...")
+
+    for model in TARGET_MODELS:
+        model_folder_name = f"{model['gcm']}_{model['rcm']}"
+        model_folder = os.path.join(BASE_ARCHIVE_DIR, model_folder_name)
+        final_output_file = os.path.join(OUTPUT_DIR, f"point_{model_folder_name}_tmax.nc")
+
+        if not os.path.isdir(model_folder):
+            print(f"⚠️ Directory not found, skipping model: {model_folder_name}")
+            continue
+
+        if os.path.exists(final_output_file):
+            print(f"⏭️ File already exists, skipping processing for: {model_folder_name}")
+            continue
+
+        print(f"\nProcessing dataset: {model_folder_name}")
+
+        current_temp_dir = os.path.join(LOCAL_WORK_DIR, model_folder_name)
+        if os.path.exists(current_temp_dir):
+            shutil.rmtree(current_temp_dir)
+        os.makedirs(current_temp_dir, exist_ok=True)
+
+        zip_files = glob.glob(os.path.join(model_folder, "*.zip"))
+
+        try:
+            print(f"  -> Extracting {len(zip_files)} zip archives to temporary working directory...")
+            for archive in zip_files:
+                with zipfile.ZipFile(archive, 'r') as zip_ref:
+                    zip_ref.extractall(current_temp_dir)
+
+            nc_files = sorted(glob.glob(os.path.join(current_temp_dir, "*.nc")))
+
+            if nc_files:
+                with xr.open_mfdataset(
+                    nc_files, 
+                    combine='by_coords',
+                    drop_variables=['time_bnds', 'lat_bnds', 'lon_bnds'],
+                    decode_coords="all"
+                ) as ds:
+
+                    print("  -> Calculating closest grid cell to target coordinates...")
+
+                    # Distance calculation in coordinate space
+                    dist = ((ds.lat - TARGET_LAT)**2 + (ds.lon - TARGET_LON)**2)
+
+                    # Find minimum distance indices (row and column)
+                    idx_y, idx_x = np.unravel_index(np.argmin(dist.values), dist.shape)
+
+                    # Determine spatial dimension names (e.g., rlat/rlon or x/y)
+                    dim_y = dist.dims[0]
+                    dim_x = dist.dims[1]
+
+                    print(f"  -> Extracting single pixel at {dim_y}={idx_y}, {dim_x}={idx_x}...")
+                    selectors = {dim_y: idx_y, dim_x: idx_x}
+
+                    # Extract single grid cell using positional indexing
+                    ds_point = ds.isel(**selectors)
+
+                    local_temp_output = os.path.join(current_temp_dir, "temp_tmax_processed.nc")
+                    print("  -> Compiling and saving point NetCDF dataset...")
+                    ds_point.load().to_netcdf(local_temp_output)
+
+                    shutil.move(local_temp_output, final_output_file)
+
+                print(f"✅ Success! Point time series compiled for model: {model_folder_name}")
+            else:
+                print("⚠️ Warning: No NetCDF (.nc) files detected after extraction phase.")
+
+        except Exception as e:
+            print(f"❌ Error encountered while processing {model_folder_name}: {e}")
+
+        finally:
+            time.sleep(1)
+            shutil.rmtree(current_temp_dir, ignore_errors=True)
+
+    # Clean up temporary working directory
+    if os.path.exists(LOCAL_WORK_DIR):
+        shutil.rmtree(LOCAL_WORK_DIR, ignore_errors=True)
+
+    print("\n🎉 Processing pipeline complete. All point subsets are consolidated in the target directory.")
+
+if __name__ == "__main__":
+    process_point_extraction()
