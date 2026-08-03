@@ -8,9 +8,9 @@ Schadensanalyse durch selbst erstellte Schadensfunktion und automatisiertem Hand
 Hier ist eine Übersicht, wo du was findest:
 
 ```text
-├── /               # Klimadaten (NetCDF/CSV)
-├── scripts/            # R-Skripte für die Analyse
-│   ├── climadata/
+               
+├── script/            
+│   ├── climadata/      # Dowloading multi-climate-ensemble
 │   └── 
 ├── output/             # Exportierte GIS-Karten
 └── README.md
