@@ -1,4 +1,6 @@
 ###########################################################################################################################
+DISCRIBTION:
+
 BASE URL for dwd-data :"https://opendata.dwd.de/climate_environment/CDC/grids_germany/daily/hyras_de/VARIABLE/" 
 VARIABLE: 
 air_temperature_mean
@@ -9,26 +11,23 @@ precipitation
 
 
 ###########################################################################################################################
-### For dwd-data with kelvin into °C (air_temperature_mean, air_temperature_max, air_temperature_min)
-
+For dwd-data kelvin into °C (air_temperature_mean, air_temperature_max, air_temperature_min)
+###########################################################################################################################
 import os
 import requests
 from bs4 import BeautifulSoup
 from tqdm import tqdm
-import re
 
 
-
-DOWNLOAD_DIR = r"YOUR_PATH"                                                           #change name
-
-BASE_URL = "https://opendata.dwd.de/climate_environment/CDC/grids_germany/daily/hyras_de/air_temperature_mean/"
+DOWNLOAD_DIR = os.path.join(".", "data", "air_temperature_min")
+BASE_URL = "https://opendata.dwd.de/climate_environment/CDC/grids_germany/daily/hyras_de/air_temperature_min/"
 
 if not os.path.exists(DOWNLOAD_DIR):
     os.makedirs(DOWNLOAD_DIR)
-    print(f"dictionary: {DOWNLOAD_DIR}")
+    print(f"Directory created: {os.path.abspath(DOWNLOAD_DIR)}")
 
-def download_hyras_tmean_1971_2005():                                                  #change name
-    print(f" HYRAS Tmean (1971-2005)...")                                              #change name
+def download_hyras_data():
+    print("Scanning DWD server for HYRAS NetCDF files...")
     
     try:
         
@@ -36,24 +35,14 @@ def download_hyras_tmean_1971_2005():                                           
         response.raise_for_status()
         soup = BeautifulSoup(response.text, 'html.parser')
         
-        
-        all_nc_files = [node.get('href') for node in soup.find_all('a') if node.get('href').endswith('.nc')]
-        
-        
-        nc_files = []
-        for f in all_nc_files:
-            
-            match = re.search(r"(\d{4})", f)
-            if match:
-                year = int(match.group(1))
-                if 1971 <= year <= 2005:
-                    nc_files.append(f)
+    
+        nc_files = [node.get('href') for node in soup.find_all('a') if node.get('href') and node.get('href').endswith('.nc')]
         
         if not nc_files:
-            print("No .nc files 1971-2005.")
+            print("No .nc files found in the specified directory.")
             return
 
-        print(f"{len(nc_files)} .nc files 1971-2005 found.\n")
+        print(f"Found {len(nc_files)} file(s) for synchronization.\n")
 
         for file_name in nc_files:
             file_url = BASE_URL + file_name
@@ -61,126 +50,126 @@ def download_hyras_tmean_1971_2005():                                           
 
             
             if os.path.exists(target_path):
-                print(f"already exists: {file_name}")
+                print(f"Already downloaded: {file_name}")
                 continue
 
-           
+            
             try:
                 with requests.get(file_url, stream=True, timeout=60) as r_file:
                     r_file.raise_for_status()
                     total_size = int(r_file.headers.get('content-length', 0))
                     
-                    with open(target_path, 'wb') as f_out, tqdm(
-                        desc=f"Lade {file_name}",
+                    with open(target_path, 'wb') as f, tqdm(
+                        desc=f"Downloading {file_name}",
                         total=total_size,
                         unit='iB',
                         unit_scale=True,
                         unit_divisor=1024,
                     ) as bar:
-                        for chunk in r_file.iter_content(chunk_size=65536): 
+                        for chunk in r_file.iter_content(chunk_size=65536):  # 64KB chunks
                             if chunk:
-                                f_out.write(chunk)
+                                f.write(chunk)
                                 bar.update(len(chunk))
             except Exception as e:
-                print(f"\ndownload dailed {file_name}: {e}")
+                print(f"\nError downloading {file_name}: {e}")
                 if os.path.exists(target_path):
-                    os.remove(target_path) 
+                    os.remove(target_path)  # Clean up incomplete file
 
-        print("\n" + "="*40)
-        print(f"FINISHED! files (1971-2005):")
-        print(f"{DOWNLOAD_DIR}")
+        print("\n" + "=" * 40)
+        print("COMPLETED! All files are saved in:")
+        print(f"{os.path.abspath(DOWNLOAD_DIR)}")
 
     except Exception as e:
-        print(f"server connection failed: {e}")
+        print(f"Critical error connecting to the server: {e}")
 
 if __name__ == "__main__":
-    download_hyras_tmean_1971_2005()                                                   #change name
+    download_hyras_data()
 
 
 
 ###########################################################################################################################
-###Precipitaion
-
+For dwd-data Precipitation in mm
+###########################################################################################################################
 import os
+import re
 import requests
 from bs4 import BeautifulSoup
 from tqdm import tqdm
-import re
 
 
-DOWNLOAD_DIR = r"YOUR_PATH"                                                               #change name
-                                                           
+START_YEAR = 1971
+END_YEAR = 2005
+
+DOWNLOAD_DIR = os.path.join(".", "data", "precipitation")
 BASE_URL = "https://opendata.dwd.de/climate_environment/CDC/grids_germany/daily/hyras_de/precipitation/"
 
 if not os.path.exists(DOWNLOAD_DIR):
     os.makedirs(DOWNLOAD_DIR)
-    print(f"dictionary: {DOWNLOAD_DIR}")
+    print(f"Directory created: {os.path.abspath(DOWNLOAD_DIR)}")
 
-def download_hyras_precipitation_1971_2005():                                             #change name
-
-    print(f"precipiation files (1971-2005)...")                                           #change name
+def download_hyras_precipitation(start_year=START_YEAR, end_year=END_YEAR):
+    print(f"Scanning server for precipitation files ({start_year}-{end_year})...")
     
     try:
         response = requests.get(BASE_URL, timeout=30)
         response.raise_for_status()
         soup = BeautifulSoup(response.text, 'html.parser')
         
-        all_nc_files = [node.get('href') for node in soup.find_all('a') if node.get('href').endswith('.nc')]
-        
+        all_nc_files = [
+            node.get('href') for node in soup.find_all('a') 
+            if node.get('href') and node.get('href').endswith('.nc')
+        ]
         
         nc_files = []
-        for f in all_nc_files:
-            
-            match = re.search(r"(\d{4})", f)
+        for file_name in all_nc_files:
+            match = re.search(r"(\d{4})", file_name)
             if match:
                 year = int(match.group(1))
-                if 1971 <= year <= 2005:
-                    nc_files.append(f)
+                if start_year <= year <= end_year:
+                    nc_files.append(file_name)
         
         if not nc_files:
-            print("No .nc file 1971-2005 found.")
+            print(f"No .nc files found for the period {start_year}-{end_year}.")
             return
 
-        print(f"{len(nc_files)} files 1971-2005 \n")
+        print(f"Found {len(nc_files)} file(s) for synchronization ({start_year}-{end_year}).\n")
 
         for file_name in nc_files:
             file_url = BASE_URL + file_name
             target_path = os.path.join(DOWNLOAD_DIR, file_name)
 
-           
+            # Skip existing files
             if os.path.exists(target_path):
-                print(f"already exists: {file_name}")
+                print(f"Already downloaded: {file_name}")
                 continue
 
-            
             try:
                 with requests.get(file_url, stream=True, timeout=60) as r_file:
                     r_file.raise_for_status()
                     total_size = int(r_file.headers.get('content-length', 0))
                     
                     with open(target_path, 'wb') as f_out, tqdm(
-                        desc=f"Lade {file_name}",
+                        desc=f"Downloading {file_name}",
                         total=total_size,
                         unit='iB',
                         unit_scale=True,
                         unit_divisor=1024,
                     ) as bar:
-                        for chunk in r_file.iter_content(chunk_size=65536): 
+                        for chunk in r_file.iter_content(chunk_size=65536):  # 64KB chunks
                             if chunk:
                                 f_out.write(chunk)
                                 bar.update(len(chunk))
             except Exception as e:
-                print(f"\nDownload failed {file_name}: {e}")
+                print(f"\nDownload failed for {file_name}: {e}")
                 if os.path.exists(target_path):
-                    os.remove(target_path) 
+                    os.remove(target_path)  # Clean up incomplete file
 
-        print("\n" + "="*40)
-        print(f"FINISHED! precipiation files (1971-2005) :")                              #change name
-
-        print(f"{DOWNLOAD_DIR}")
+        print("\n" + "=" * 40)
+        print(f"FINISHED! Precipitation files ({start_year}-{end_year}) saved to:")
+        print(f"{os.path.abspath(DOWNLOAD_DIR)}")
 
     except Exception as e:
-        print(f"server connection failed: {e}")
+        print(f"Server connection failed: {e}")
 
 if __name__ == "__main__":
-    download_hyras_precipitation_1971_2005()                                              #change name
+    download_hyras_precipitation()
