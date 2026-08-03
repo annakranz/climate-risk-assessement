@@ -1,12 +1,16 @@
 # climate-risk-assessement
+Runterladen von DWD-Daten für Deutschland
+Erstellen von Muli-Klima-Ensemble von CDS
+Klimaanalyse
 
-Klimarisikoanalyse durch selbst zusammengestelltes Klima-Ensemble CORDEX11
+Automatisierte Skripte (Punkt Extraction dwd und cds, anschließende Analyse)
 
+Ausland chesla Analysie ohne DWD
+
+Erstellen von Gis-Karten für Risikopotenziale
 Schadensanalyse durch selbst erstellte Schadensfunktion und automatisiertem Handlungskatalog
 
-### 🏗 Ordnerstruktur
-Hier ist eine Übersicht, wo du was findest:
-
+###  Ordnerstruktur
 ```text
                
 ├── script/            
