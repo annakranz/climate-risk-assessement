@@ -1,1 +1,234 @@
+import os
+import platform
+import subprocess
+import numpy as np
+import pandas as pd
+import xarray as xr
 
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DATA_DIR = os.path.join(BASE_DIR, "data")
+
+paths = {
+    "dwd_5km": os.path.join(
+        DATA_DIR, "dwd_cut", "tmax_punkt3_wuerzburg.nc"
+    ),
+    "rcp45_hist": os.path.join(DATA_DIR, "CDS_cut", "hist_punkt"),
+    "rcp45_proj": os.path.join(DATA_DIR, "CDS_cut", "rcp4.5_punkt"),
+    "rcp85_hist": os.path.join(DATA_DIR, "CDS_cut", "hist_punkt"),
+    "rcp85_proj": os.path.join(DATA_DIR, "CDS_cut", "rcp8.5_punkt"),
+}
+
+valid_models_full = [
+    "cnrm_cerfacs_cm5_cnrm_aladin63",
+    "ichec_ec_earth_knmi_racmo22e",
+    "ichec_ec_earth_smhi_rca4",
+    "ipsl_cm5a_mr_smhi_rca4",
+    "mohc_hadgem2_es_smhi_rca4",
+    "mpi_m_mpi_esm_lr_smhi_rca4",
+    "ncc_noresm1_m_smhi_rca4",
+]
+
+valid_models_percentiles = ["ec_earth", "hadgem2_es", "m_mpi", "noresm1_m"]
+
+
+def get_timeseries(path):
+    with xr.open_dataset(path) as ds:
+        v = "tasmax" if "tasmax" in ds.data_vars else list(ds.data_vars)[0]
+        da = ds[v].compute()
+        if len(da.dims) > 1:
+            da = da.mean(dim=[d for d in da.dims if d != "time"])
+        da = da.sortby("time")
+        da = da.sel(time=~da.get_index("time").duplicated())
+        if da.max() > 200:
+            da = da - 273.15
+        return da
+
+
+def count_hw(da, threshold=30, days=3):
+    binary = (da.values >= threshold).astype(int)
+    count, run = 0, 0
+    for val in binary:
+        if val == 1:
+            run += 1
+        else:
+            if run >= days:
+                count += 1
+            run = 0
+    if run >= days:
+        count += 1
+    num_years = len(np.unique(da.time.dt.year))
+    return count / num_years if num_years > 0 else 0
+
+
+def get_clean_delta(h_path, p_path, start_yr, end_yr, d_len):
+    deltas = []
+    if not os.path.exists(p_path) or not os.path.exists(h_path):
+        return 0
+
+    files = [f for f in os.listdir(p_path) if f.endswith(".nc")]
+    h_list = [h for h in os.listdir(h_path) if h.endswith(".nc")]
+
+    for f in files:
+        matched_model = None
+        for m in valid_models_full:
+            if m in f.lower():
+                matched_model = m
+                break
+
+        if not matched_model:
+            continue
+
+        try:
+            da_p = get_timeseries(os.path.join(p_path, f))
+            v_p = count_hw(
+                da_p.sel(time=slice(str(start_yr), str(end_yr))), days=d_len
+            )
+
+            match = [h for h in h_list if matched_model in h.lower()]
+            if not match:
+                continue
+
+            da_h = get_timeseries(os.path.join(h_path, match[0]))
+            v_h = count_hw(da_h.sel(time=slice("1971", "2000")), days=d_len)
+
+            deltas.append(v_p - v_h)
+        except Exception:
+            continue
+
+    return np.median(deltas) if deltas else 0
+
+
+def open_file_cross_platform(file_path):
+    try:
+        if platform.system() == "Windows":
+            os.startfile(file_path)
+        elif platform.system() == "Darwin":
+            subprocess.run(["open", file_path], check=True)
+        else:
+            subprocess.run(["xdg-open", file_path], check=True)
+        print(" Opening Excel file...")
+    except Exception as e:
+        print(f"Failed to open file automatically: {e}")
+
+
+def main():
+    if not os.path.exists(paths["dwd_5km"]):
+        print("DWD baseline file not found.")
+        return
+
+    print("--- ANALYSIS (Exact 7 Model Pairs) ---")
+    da_dwd = get_timeseries(paths["dwd_5km"])
+
+    final_results = []
+
+    for d_len in [3, 5, 10]:
+        base_5km = count_hw(da_dwd.sel(time=slice("1971", "2000")), days=d_len)
+
+        d45_35 = get_clean_delta(
+            paths["rcp45_hist"], paths["rcp45_proj"], 2021, 2050, d_len
+        )
+        d85_35 = get_clean_delta(
+            paths["rcp85_hist"], paths["rcp85_proj"], 2021, 2050, d_len
+        )
+        d45_55 = get_clean_delta(
+            paths["rcp45_hist"], paths["rcp45_proj"], 2041, 2070, d_len
+        )
+        d85_55 = get_clean_delta(
+            paths["rcp85_hist"], paths["rcp85_proj"], 2041, 2070, d_len
+        )
+
+        final_results.append(
+            {
+                "Duration": f">= {d_len} Days",
+                "Hist": round(base_5km, 2),
+                "2035 RCP4.5": round(base_5km + d45_35, 2),
+                "2035 RCP8.5": round(base_5km + d85_35, 2),
+                "2055 RCP4.5": round(base_5km + d45_55, 2),
+                "2055 RCP8.5": round(base_5km + d85_55, 2),
+            }
+        )
+
+    df_ensemble = pd.DataFrame(final_results)
+    print("\nENSEMBLE RESULTS TABLE:")
+    print(df_ensemble.to_string(index=False))
+
+    print("\n📊 Calculating percentiles for RCP 8.5 (2041-2070)...")
+
+    dwd_period = slice("1971", "2000")
+    percentile_results = []
+
+    for d_len in [3, 5, 10]:
+        base_val = count_hw(da_dwd.sel(time=dwd_period), days=d_len)
+
+        model_deltas = []
+        if os.path.exists(paths["rcp85_proj"]):
+            proj_files = [
+                f for f in os.listdir(paths["rcp85_proj"]) if f.endswith(".nc")
+            ]
+
+            for f in proj_files:
+                if not any(m in f.lower() for m in valid_models_percentiles):
+                    continue
+                try:
+                    da_p = get_timeseries(os.path.join(paths["rcp85_proj"], f))
+                    v_p = count_hw(
+                        da_p.sel(time=slice("2041", "2070")), days=d_len
+                    )
+
+                    m_id = f.split("_")[2].lower() if "_" in f else f[:4]
+                    if not os.path.exists(paths["rcp85_hist"]):
+                        continue
+
+                    h_match = [
+                        h
+                        for h in os.listdir(paths["rcp85_hist"])
+                        if m_id in h.lower() and h.endswith(".nc")
+                    ]
+                    if not h_match:
+                        continue
+
+                    da_h = get_timeseries(
+                        os.path.join(paths["rcp85_hist"], h_match[0])
+                    )
+                    v_h = count_hw(da_h.sel(time=slice("1971", "2000")), days=d_len)
+
+                    model_deltas.append(v_p - v_h)
+                except Exception:
+                    continue
+
+        if model_deltas:
+            p15 = base_val + np.percentile(model_deltas, 15)
+            p50 = base_val + np.percentile(model_deltas, 50)
+            p85 = base_val + np.percentile(model_deltas, 85)
+        else:
+            p15 = p50 = p85 = base_val
+
+        percentile_results.append(
+            {
+                "Indicator (2055)": f"Heatwaves >= {d_len} Days",
+                "15th Percentile": round(max(0, p15), 2),
+                "50th Percentile": round(max(0, p50), 2),
+                "85th Percentile": round(max(0, p85), 2),
+            }
+        )
+
+    df_perzentile = pd.DataFrame(percentile_results)
+    print("\nPERCENTILE RESULTS TABLE (RCP 8.5 / 2055):")
+    print("=" * 60)
+    print(df_perzentile.to_string(index=False))
+    print("=" * 60)
+
+    output_excel = os.path.join(BASE_DIR, "heatwaves.xlsx")
+
+    with pd.ExcelWriter(output_excel, engine="openpyxl") as writer:
+        df_ensemble.to_excel(writer, sheet_name="Ensemble_Summary", index=False)
+        df_perzentile.to_excel(
+            writer, sheet_name="RCP85_Percentiles", index=False
+        )
+
+    print(f"\nExcel file successfully saved to: {output_excel}")
+    open_file_cross_platform(output_excel)
+
+
+if __name__ == "__main__":
+    main()
