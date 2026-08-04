@@ -1,13 +1,9 @@
 ###########################################################################################################################
-###dowloads:
-#VSC
-#Miniforge for environment, execute via VSC
-
-
-
-
+DOWNLOAD:
+VSC
+Miniforge for environment, execute via VSC
 ###########################################################################################################################
-####Install those pakages for your environment
+Install those pakages for your environment
 
 !mamba list > mamba_requirements.txt
 print("✅ mamba_requirements.txt wurde erstellt.")
@@ -19,7 +15,7 @@ print("✅ environment.yml wurde erstellt. Das ist der Goldstandard für Conda/M
 
 
 ###########################################################################################################################
-####climate data acquision
+climate data acquision
 #Create api-key via CDS-Account
 #log in your CDS-Account and search under your profil for your api-key. 
 #create text file via VSC with you api-key, it should look like this
