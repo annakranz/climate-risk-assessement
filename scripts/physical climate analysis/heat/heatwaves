@@ -12,9 +12,8 @@ paths = {
     "dwd_5km": os.path.join(
         DATA_DIR, "dwd_cut", "tmax_punkt3_wuerzburg.nc"
     ),
-    "rcp45_hist": os.path.join(DATA_DIR, "CDS_cut", "hist_punkt"),
+    "hist": os.path.join(DATA_DIR, "CDS_cut", "hist_punkt"),
     "rcp45_proj": os.path.join(DATA_DIR, "CDS_cut", "rcp4.5_punkt"),
-    "rcp85_hist": os.path.join(DATA_DIR, "CDS_cut", "hist_punkt"),
     "rcp85_proj": os.path.join(DATA_DIR, "CDS_cut", "rcp8.5_punkt"),
 }
 
@@ -125,16 +124,16 @@ def main():
         base_5km = count_hw(da_dwd.sel(time=slice("1971", "2000")), days=d_len)
 
         d45_35 = get_clean_delta(
-            paths["rcp45_hist"], paths["rcp45_proj"], 2021, 2050, d_len
+            paths["hist"], paths["rcp45_proj"], 2021, 2050, d_len
         )
         d85_35 = get_clean_delta(
-            paths["rcp85_hist"], paths["rcp85_proj"], 2021, 2050, d_len
+            paths["hist"], paths["rcp85_proj"], 2021, 2050, d_len
         )
         d45_55 = get_clean_delta(
-            paths["rcp45_hist"], paths["rcp45_proj"], 2041, 2070, d_len
+            paths["hist"], paths["rcp45_proj"], 2041, 2070, d_len
         )
         d85_55 = get_clean_delta(
-            paths["rcp85_hist"], paths["rcp85_proj"], 2041, 2070, d_len
+            paths["hist"], paths["rcp85_proj"], 2041, 2070, d_len
         )
 
         final_results.append(
@@ -176,19 +175,19 @@ def main():
                     )
 
                     m_id = f.split("_")[2].lower() if "_" in f else f[:4]
-                    if not os.path.exists(paths["rcp85_hist"]):
+                    if not os.path.exists(paths["hist"]):
                         continue
 
                     h_match = [
                         h
-                        for h in os.listdir(paths["rcp85_hist"])
+                        for h in os.listdir(paths["hist"])
                         if m_id in h.lower() and h.endswith(".nc")
                     ]
                     if not h_match:
                         continue
 
                     da_h = get_timeseries(
-                        os.path.join(paths["rcp85_hist"], h_match[0])
+                        os.path.join(paths["hist"], h_match[0])
                     )
                     v_h = count_hw(da_h.sel(time=slice("1971", "2000")), days=d_len)
 
