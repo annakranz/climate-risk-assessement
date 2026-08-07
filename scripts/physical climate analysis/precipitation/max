@@ -1,1 +1,227 @@
+import os
+import sys
+import warnings
+import numpy as np
+import pandas as pd
+import xarray as xr
 
+warnings.filterwarnings("ignore")
+
+paths = {
+    "dwd": r"data/obs/pre_point.nc",
+    "hist": r"data/cds/hist_point",
+    "rcp45": r"data/cds/rcp4.5_point",
+    "rcp85": r"data/cds/rcp8.5_point",
+}
+
+thresholds = [20, 30]
+periods = {"2035": (2021, 2050), "2055": (2041, 2070)}
+
+valid_models = [
+    "cnrm_cerfacs_cm5_cnrm_aladin63",
+    "ichec_ec_earth_knmi_racmo22e",
+    "ichec_ec_earth_smhi_rca4",
+    "ipsl_cm5a_mr_smhi_rca4",
+    "mohc_hadgem2_es_smhi_rca4",
+    "mpi_m_mpi_esm_lr_smhi_rca4",
+    "ncc_noresm1_m_smhi_rca4",
+]
+
+
+def count_exceedance(ds, threshold):
+    if hasattr(ds.time, "calendar"):
+        ds = ds.convert_calendar("standard", align_on="date")
+
+    var_names = ["pr", "precipitation", "precip", "niederschlag", "pr_c", "cp"]
+    var_name = [
+        v
+        for v in ds.data_vars
+        if v.lower() in var_names or "pr" in v.lower()
+    ][0]
+
+    da = ds[var_name]
+
+    if len(da.dims) > 1:
+        spatial_dims = [d for d in da.dims if d != "time"]
+        da = da.mean(dim=spatial_dims)
+
+    da = da.sortby("time")
+
+    if da.max() < 0.1 or (
+        hasattr(da, "units") and da.attrs["units"] == "kg m-2 s-1"
+    ):
+        da = da * 86400
+
+    yearly_counts = (da > threshold).astype(int).groupby("time.year").sum()
+    return float(yearly_counts.mean())
+
+
+def process_scenario_deltas(scenario_path, scenario_name):
+    results = []
+    hist_files = [f for f in os.listdir(paths["hist"]) if f.endswith(".nc")]
+    proj_files = [f for f in os.listdir(scenario_path) if f.endswith(".nc")]
+
+    print(f"\nCalculating deltas for scenario {scenario_name}...")
+
+    for p_file in proj_files:
+        matched_model = next(
+            (m for m in valid_models if m in p_file.lower()), None
+        )
+        if not matched_model:
+            continue
+
+        h_file = next(
+            (f for f in hist_files if matched_model in f.lower()), None
+        )
+        if not h_file:
+            print(f"Warning: No matching historical file for {matched_model}")
+            continue
+
+        try:
+            path_h = os.path.join(paths["hist"], h_file)
+            path_p = os.path.join(scenario_path, p_file)
+
+            with (
+                xr.open_dataset(path_h, decode_coords="all") as ds_h,
+                xr.open_dataset(path_p, decode_coords="all") as ds_p,
+            ):
+                for t in thresholds:
+                    val_h = count_exceedance(
+                        ds_h.sel(time=slice("1971", "2000")), t
+                    )
+
+                    for p_label, (start, end) in periods.items():
+                        val_p = count_exceedance(
+                            ds_p.sel(time=slice(str(start), str(end))), t
+                        )
+                        results.append(
+                            {
+                                "Model": matched_model,
+                                "Threshold": t,
+                                "Indicator": f">{t} mm/d",
+                                "Period": p_label,
+                                "Scenario": scenario_name,
+                                "Delta": val_p - val_h,
+                            }
+                        )
+            print(f"Processed model [{scenario_name}]: {matched_model}")
+        except Exception as e:
+            print(f"Error processing model {matched_model}: {e}")
+
+    return pd.DataFrame(results)
+
+
+def build_percentile_table(df, scenario_name, dwd_results):
+    percentile_rows = []
+    for t in thresholds:
+        ind = f">{t} mm/d"
+        deltas = df[(df["Threshold"] == t) & (df["Period"] == "2055")][
+            "Delta"
+        ].values
+
+        if len(deltas) > 0:
+            p15 = dwd_results[t] + np.percentile(deltas, 15)
+            p50 = dwd_results[t] + np.percentile(deltas, 50)
+            p85 = dwd_results[t] + np.percentile(deltas, 85)
+
+            percentile_rows.append(
+                {
+                    "Indicator (2055)": ind,
+                    "Baseline": round(dwd_results[t], 2),
+                    "15th Percentile": round(max(0, p15), 2),
+                    "50th Percentile (Median)": round(max(0, p50), 2),
+                    "85th Percentile": round(max(0, p85), 2),
+                }
+            )
+    return pd.DataFrame(percentile_rows)
+
+
+def main():
+    missing = [k for k, p in paths.items() if not os.path.exists(p)]
+    if missing:
+        print("ERROR: The following paths were not found:")
+        for m in missing:
+            print(f"   - {m}: {paths[m]}")
+        sys.exit(1)
+
+    print("Calculating baseline reference values (1971-2000)...")
+    with xr.open_dataset(paths["dwd"], decode_coords="all") as ds_dwd:
+        ds_dwd_sub = ds_dwd.sel(time=slice("1971", "2000"))
+        dwd_results = {t: count_exceedance(ds_dwd_sub, t) for t in thresholds}
+
+    df_rcp45 = process_scenario_deltas(paths["rcp45"], "RCP 4.5")
+    df_rcp85 = process_scenario_deltas(paths["rcp85"], "RCP 8.5")
+
+    if df_rcp45.empty and df_rcp85.empty:
+        print("ERROR: No projection data processed. Aborting.")
+        return
+
+    summary_rows = []
+    for t in thresholds:
+        ind = f">{t} mm/d"
+        row = {"Indicator": ind, "Baseline": round(dwd_results[t], 2)}
+
+        for p_label in periods.keys():
+            deltas_45 = df_rcp45[
+                (df_rcp45["Threshold"] == t) & (df_rcp45["Period"] == p_label)
+            ]["Delta"].values
+            med_45 = np.median(deltas_45) if len(deltas_45) > 0 else 0
+            row[f"{p_label} (RCP 4.5)"] = round(
+                max(0, dwd_results[t] + med_45), 2
+            )
+
+            deltas_85 = df_rcp85[
+                (df_rcp85["Threshold"] == t) & (df_rcp85["Period"] == p_label)
+            ]["Delta"].values
+            med_85 = np.median(deltas_85) if len(deltas_85) > 0 else 0
+            row[f"{p_label} (RCP 8.5)"] = round(
+                max(0, dwd_results[t] + med_85), 2
+            )
+
+        summary_rows.append(row)
+
+    df_summary = pd.DataFrame(summary_rows)
+
+    df_perc_rcp45 = build_percentile_table(df_rcp45, "RCP 4.5", dwd_results)
+    df_perc_rcp85 = build_percentile_table(df_rcp85, "RCP 8.5", dwd_results)
+
+    print("\n" + "=" * 90)
+    print("1. ENSEMBLE SUMMARY (RCP 4.5 vs. RCP 8.5)")
+    print("=" * 90)
+    print(df_summary.to_string(index=False))
+
+    print("\n" + "=" * 90)
+    print("2. PERCENTILE ANALYSIS RCP 4.5 (2055)")
+    print("=" * 90)
+    print(df_perc_rcp45.to_string(index=False))
+
+    print("\n" + "=" * 90)
+    print("3. PERCENTILE ANALYSIS RCP 8.5 (2055)")
+    print("=" * 90)
+    print(df_perc_rcp85.to_string(index=False))
+
+    output_excel = "heavy_rainfall_analysis.xlsx"
+    abs_path = os.path.abspath(output_excel)
+
+    with pd.ExcelWriter(output_excel, engine="openpyxl") as writer:
+        df_summary.to_excel(
+            writer, sheet_name="Ensemble_Summary", index=False
+        )
+        df_perc_rcp45.to_excel(
+            writer, sheet_name="Percentiles_RCP45_2055", index=False
+        )
+        df_perc_rcp85.to_excel(
+            writer, sheet_name="Percentiles_RCP85_2055", index=False
+        )
+
+    print(f"\nExcel file saved to: {abs_path}")
+
+    try:
+        os.startfile(abs_path)
+        print("Opening Excel file...")
+    except Exception as e:
+        print(f"Could not open file automatically: {e}")
+
+
+if __name__ == "__main__":
+    main()
