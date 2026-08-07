@@ -1,0 +1,248 @@
+import glob
+import os
+import warnings
+import numpy as np
+import pandas as pd
+import xarray as xr
+
+warnings.filterwarnings("ignore")
+
+# --- PARAMETER & KONFIGURATION ---
+THRESHOLD = 18.3  # Schwellenwert für SKZ Gebäudetechnik (°C)
+
+# --- PFADE (Relativ für Git / Repository-Struktur) ---
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+PATHS = {
+    "dwd": os.path.join(BASE_DIR, "dwd_cut", "airmean_punkt_wuerzburg.nc"),
+    "rcp45_hist": os.path.join(BASE_DIR, "CDS_cut", "hist_punkt"),
+    "rcp45_proj": os.path.join(BASE_DIR, "CDS_cut", "rcp4.5_punkt"),
+    "rcp85_hist": os.path.join(BASE_DIR, "CDS_cut", "hist_punkt"),
+    "rcp85_proj": os.path.join(BASE_DIR, "CDS_cut", "rcp8.5_punkt"),
+}
+
+# Excel-Ausgabepfad im aktuellen Repository
+EXCEL_OUTPUT_PATH = os.path.join(
+    BASE_DIR, "Kuehlbedarf_SKZ_Wuerzburg_Getrennt.xlsx"
+)
+
+# --- 7 EXAKTE MODELL-KOMBINATIONEN ---
+VALID_MODELS = [
+    "cnrm_cerfacs_cm5_cnrm_aladin63",
+    "ichec_ec_earth_knmi_racmo22e",
+    "ichec_ec_earth_smhi_rca4",
+    "ipsl_cm5a_mr_smhi_rca4",
+    "mohc_hadgem2_es_smhi_rca4",
+    "mpi_m_mpi_esm_lr_smhi_rca4",
+    "ncc_noresm1_m_smhi_rca4",
+]
+
+
+def load_and_fix_da(path):
+    """Lädt Tmean Daten und berechnet den Gebietsmittelwert."""
+    if os.path.isdir(path):
+        files = glob.glob(os.path.join(path, "*.nc"))
+        datasets = []
+        for f in files:
+            ds_single = xr.open_dataset(f, decode_coords="all")
+            ds_single = ds_single.convert_calendar("standard", align_on="date")
+            datasets.append(ds_single)
+        ds = xr.concat(datasets, dim="time")
+    else:
+        ds = xr.open_dataset(path, decode_coords="all")
+        ds = ds.convert_calendar("standard", align_on="date")
+
+    var_name = [
+        v
+        for v in ds.data_vars
+        if any(x in v.lower() for x in ["tas", "tmean", "temperature", "meant"])
+    ][0]
+    da = ds[var_name]
+
+    if len(da.dims) > 1:
+        spatial_dims = [d for d in da.dims if d != "time"]
+        da = da.mean(dim=spatial_dims)
+
+    da = da.sortby("time")
+
+    if da.max() > 100 or (
+        hasattr(da, "units") and da.attrs["units"] in ["K", "Kelvin"]
+    ):
+        da = da - 273.15
+
+    return da.load()
+
+
+def calc_cdd_stats(da, threshold=THRESHOLD):
+    """Berechnet Kühltage und Kühlgradtage (CDD)."""
+    cooling_days = (da > threshold).astype(int).groupby("time.year").sum()
+    diff = da - threshold
+    cdd_values = diff.where(diff > 0, 0).groupby("time.year").sum()
+    return float(cooling_days.mean()), float(cdd_values.mean())
+
+
+def get_ensemble_stats(hist_path, proj_path, target_years):
+    """Berechnet P15, Median und P85 über das 7-Modell-Ensemble."""
+    deltas_days, deltas_cdd = [], []
+
+    if not os.path.exists(proj_path) or not os.path.exists(hist_path):
+        return None
+
+    files = [f for f in os.listdir(proj_path) if f.endswith(".nc")]
+    h_list = [h for h in os.listdir(hist_path) if h.endswith(".nc")]
+
+    for f in files:
+        matched_model = next(
+            (m for m in VALID_MODELS if m in f.lower()), None
+        )
+        if not matched_model:
+            continue
+
+        try:
+            da_p = load_and_fix_da(os.path.join(proj_path, f))
+            match = [h for h in h_list if matched_model in h.lower()]
+            if not match:
+                continue
+
+            da_h = load_and_fix_da(os.path.join(hist_path, match[0]))
+
+            days_h, cdd_h = calc_cdd_stats(da_h.sel(time=slice("1971", "2000")))
+            days_p, cdd_p = calc_cdd_stats(
+                da_p.sel(
+                    time=slice(str(target_years[0]), str(target_years[1]))
+                )
+            )
+
+            deltas_days.append(days_p - days_h)
+            deltas_cdd.append(cdd_p - cdd_h)
+        except Exception as e:
+            print(f"Fehler bei Modell {matched_model}: {e}")
+            continue
+
+    if not deltas_days:
+        return None
+
+    return {
+        "days": {
+            "p15": float(np.percentile(deltas_days, 15)),
+            "median": float(np.median(deltas_days)),
+            "p85": float(np.percentile(deltas_days, 85)),
+        },
+        "cdd": {
+            "p15": float(np.percentile(deltas_cdd, 15)),
+            "median": float(np.median(deltas_cdd)),
+            "p85": float(np.percentile(deltas_cdd, 85)),
+        },
+    }
+
+
+def build_scenario_dataframe(
+    scenario_label, hist_path, proj_path, base_days, base_cdd
+):
+    """Erstellt ein DataFrame für ein einzelnes Szenario."""
+    horizons = [("2035 (2021-2050)", (2021, 2050)), ("2055 (2041-2070)", (2041, 2070))]
+    rows = []
+
+    for time_label, years in horizons:
+        stats = get_ensemble_stats(hist_path, proj_path, years)
+        if not stats:
+            continue
+
+        # 1. Kühltage
+        d = stats["days"]
+        rows.append({
+            "Parameter": "Kühltage (Anzahl d/a)",
+            "Zeithorizont": time_label,
+            "DWD Basis (1971-2000)": round(base_days, 1),
+            "Änderung P15": round(d["p15"], 1),
+            "Änderung Median": round(d["median"], 1),
+            "Änderung P85": round(d["p85"], 1),
+            "Prognose P15": round(max(0, base_days + d["p15"]), 1),
+            "Prognose Median": round(max(0, base_days + d["median"]), 1),
+            "Prognose P85": round(max(0, base_days + d["p85"]), 1),
+        })
+
+        # 2. Kühlgradtage (CDD)
+        c = stats["cdd"]
+        rows.append({
+            "Parameter": "Kühlgradtage (CDD)",
+            "Zeithorizont": time_label,
+            "DWD Basis (1971-2000)": round(base_cdd, 1),
+            "Änderung P15": round(c["p15"], 1),
+            "Änderung Median": round(c["median"], 1),
+            "Änderung P85": round(c["p85"], 1),
+            "Prognose P15": round(max(0, base_cdd + c["p15"]), 1),
+            "Prognose Median": round(max(0, base_cdd + c["median"]), 1),
+            "Prognose P85": round(max(0, base_cdd + c["p85"]), 1),
+        })
+
+    return pd.DataFrame(rows)
+
+
+def save_excel(df_rcp45, df_rcp85, file_path):
+    """Speichert zwei getrennte Excel-Sheets."""
+    with pd.ExcelWriter(file_path, engine="openpyxl") as writer:
+        if not df_rcp45.empty:
+            df_rcp45.to_excel(writer, sheet_name="RCP 4.5", index=False)
+        if not df_rcp85.empty:
+            df_rcp85.to_excel(writer, sheet_name="RCP 8.5", index=False)
+
+    print(f"\n📊 Excel-Datei gespeichert unter: {file_path}")
+
+
+if __name__ == "__main__":
+    print(
+        f"🌡️ Berechne Kühlbedarf (Schwelle: {THRESHOLD}°C) getrennt für RCP 4.5 und RCP 8.5..."
+    )
+
+    if os.path.exists(PATHS["dwd"]):
+        da_dwd = load_and_fix_da(PATHS["dwd"])
+        base_days, base_cdd = calc_cdd_stats(
+            da_dwd.sel(time=slice("1971", "2000"))
+        )
+    else:
+        print(
+            f"⚠️ DWD-Datei nicht gefunden unter {PATHS['dwd']}. Bitte Pfad prüfen."
+        )
+        base_days, base_cdd = 0, 0
+
+    # Tabelle 1: RCP 4.5
+    df_rcp45 = build_scenario_dataframe(
+        "RCP 4.5",
+        PATHS["rcp45_hist"],
+        PATHS["rcp45_proj"],
+        base_days,
+        base_cdd,
+    )
+
+    # Tabelle 2: RCP 8.5
+    df_rcp85 = build_scenario_dataframe(
+        "RCP 8.5",
+        PATHS["rcp85_hist"],
+        PATHS["rcp85_proj"],
+        base_days,
+        base_cdd,
+    )
+
+    # Konsolenausgabe der zwei Tabellen
+    print("\n" + "=" * 90)
+    print("TABELLE 1: SZENARIO RCP 4.5")
+    print("=" * 90)
+    print(
+        df_rcp45.to_string(index=False)
+        if not df_rcp45.empty
+        else "Keine Daten verfügbar."
+    )
+
+    print("\n" + "=" * 90)
+    print("TABELLE 2: SZENARIO RCP 8.5")
+    print("=" * 90)
+    print(
+        df_rcp85.to_string(index=False)
+        if not df_rcp85.empty
+        else "Keine Daten verfügbar."
+    )
+    print("=" * 90)
+
+    # Excel mit 2 Sheets speichern
+    save_excel(df_rcp45, df_rcp85, EXCEL_OUTPUT_PATH)
