@@ -1,0 +1,250 @@
+import os
+import sys
+import warnings
+import numpy as np
+import pandas as pd
+import xarray as xr
+
+warnings.filterwarnings("ignore")
+
+DWD_REF = {
+    "Sommer": 175.0,
+    "Winter": 129.7,
+}
+
+paths = {
+    "hist": r"data/cds/hist_point",
+    "rcp45": r"data/cds/rcp4.5_point",
+    "rcp85": r"data/cds/rcp8.5_point",
+}
+
+periods = {"2035": (2021, 2050), "2055": (2041, 2070)}
+
+valid_models = [
+    "cnrm_cerfacs_cm5_cnrm_aladin63",
+    "ichec_ec_earth_knmi_racmo22e",
+    "ichec_ec_earth_smhi_rca4",
+    "ipsl_cm5a_mr_smhi_rca4",
+    "mohc_hadgem2_es_smhi_rca4",
+    "mpi_m_mpi_esm_lr_smhi_rca4",
+    "ncc_noresm1_m_smhi_rca4",
+]
+
+
+def get_clean_precip(path):
+    with xr.open_dataset(path, decode_coords="all") as ds:
+        if hasattr(ds.time, "calendar"):
+            ds = ds.convert_calendar("standard", align_on="date")
+
+        v = next(
+            (
+                var
+                for var in ["pr", "pr_c", "precip", "precipitation", "cp"]
+                if var in ds.data_vars
+            ),
+            list(ds.data_vars)[0],
+        )
+        da = ds[v].compute()
+
+        if len(da.dims) > 1:
+            spatial_dims = [d for d in da.dims if d != "time"]
+            da = da.mean(dim=spatial_dims)
+
+        da = da.sortby("time")
+
+        if da.max() < 0.1:
+            da = da * 86400
+
+        return da
+
+
+def calc_seasonal_sum(da, season, start_yr, end_yr):
+    try:
+        subset = da.sel(time=slice(str(start_yr - 1), str(end_yr)))
+        seasonal_resampled = subset.resample(time="QS-DEC").sum(dim="time")
+        seasonal_resampled = seasonal_resampled.sel(
+            time=slice(str(start_yr), str(end_yr))
+        )
+
+        if season == "Sommer":
+            s_data = seasonal_resampled.sel(
+                time=seasonal_resampled.time.dt.month == 6
+            )
+        else:
+            s_data = seasonal_resampled.sel(
+                time=seasonal_resampled.time.dt.month == 12
+            )
+
+        return float(s_data.mean())
+    except Exception:
+        return np.nan
+
+
+def process_scenario_deltas(scenario_path, scenario_name):
+    deltas = {"S35": [], "W35": [], "S55": [], "W55": []}
+
+    hist_files = [f for f in os.listdir(paths["hist"]) if f.endswith(".nc")]
+    proj_files = [f for f in os.listdir(scenario_path) if f.endswith(".nc")]
+
+    print(
+        f"\nCalculating seasonal precipitation deltas for {scenario_name}..."
+    )
+
+    for p_file in proj_files:
+        matched_model = next(
+            (m for m in valid_models if m in p_file.lower()), None
+        )
+        if not matched_model:
+            continue
+
+        h_file = next(
+            (f for f in hist_files if matched_model in f.lower()), None
+        )
+        if not h_file:
+            print(f"Warning: No matching historical file for {matched_model}")
+            continue
+
+        try:
+            da_p = get_clean_precip(os.path.join(scenario_path, p_file))
+            da_h = get_clean_precip(os.path.join(paths["hist"], h_file))
+
+            h_s = calc_seasonal_sum(da_h, "Sommer", 1971, 2000)
+            h_w = calc_seasonal_sum(da_h, "Winter", 1971, 2000)
+
+            if np.isnan(h_s) or np.isnan(h_w):
+                continue
+
+            s35 = calc_seasonal_sum(da_p, "Sommer", 2021, 2050)
+            s55 = calc_seasonal_sum(da_p, "Sommer", 2041, 2070)
+            w35 = calc_seasonal_sum(da_p, "Winter", 2021, 2050)
+            w55 = calc_seasonal_sum(da_p, "Winter", 2041, 2070)
+
+            deltas["S35"].append(s35 - h_s)
+            deltas["S55"].append(s55 - h_s)
+            deltas["W35"].append(w35 - h_w)
+            deltas["W55"].append(w55 - h_w)
+
+            print(f"Processed model [{scenario_name}]: {matched_model}")
+        except Exception as e:
+            print(f"Error processing model {matched_model}: {e}")
+            continue
+
+    return deltas
+
+
+def build_percentile_table(deltas_dict, scenario_name):
+    rows = []
+    for season_label, s_key in [("Sommer (JJA)", "S"), ("Winter (DJF)", "W")]:
+        ref_val = DWD_REF["Sommer" if s_key == "S" else "Winter"]
+        valid_deltas = [
+            d for d in deltas_dict[f"{s_key}55"] if not np.isnan(d)
+        ]
+
+        if valid_deltas:
+            p15_d = np.percentile(valid_deltas, 15)
+            p50_d = np.percentile(valid_deltas, 50)
+            p85_d = np.percentile(valid_deltas, 85)
+
+            rows.append(
+                {
+                    "Season (2055)": season_label,
+                    "Baseline [mm]": round(ref_val, 1),
+                    "15th Percentile [mm]": round(ref_val + p15_d, 1),
+                    "50th Percentile (Median) [mm]": round(ref_val + p50_d, 1),
+                    "85th Percentile [mm]": round(ref_val + p85_d, 1),
+                    "15th Delta [mm]": round(p15_d, 1),
+                    "50th Delta [mm]": round(p50_d, 1),
+                    "85th Delta [mm]": round(p85_d, 1),
+                }
+            )
+    return pd.DataFrame(rows)
+
+
+def main():
+    missing = [k for k, p in paths.items() if not os.path.exists(p)]
+    if missing:
+        print("ERROR: The following paths were not found:")
+        for m in missing:
+            print(f"   - {m}: {paths[m]}")
+        sys.exit(1)
+
+    deltas_rcp45 = process_scenario_deltas(paths["rcp45"], "RCP 4.5")
+    deltas_rcp85 = process_scenario_deltas(paths["rcp85"], "RCP 8.5")
+
+    summary_rows = []
+    for season_label, s_key in [("Sommer (JJA)", "S"), ("Winter (DJF)", "W")]:
+        ref_val = DWD_REF["Sommer" if s_key == "S" else "Winter"]
+
+        d45_35 = np.median(
+            [d for d in deltas_rcp45[f"{s_key}35"] if not np.isnan(d)]
+        )
+        d45_55 = np.median(
+            [d for d in deltas_rcp45[f"{s_key}55"] if not np.isnan(d)]
+        )
+
+        d85_35 = np.median(
+            [d for d in deltas_rcp85[f"{s_key}35"] if not np.isnan(d)]
+        )
+        d85_55 = np.median(
+            [d for d in deltas_rcp85[f"{s_key}55"] if not np.isnan(d)]
+        )
+
+        summary_rows.append(
+            {
+                "Season": season_label,
+                "Baseline [mm]": round(ref_val, 1),
+                "2035 RCP 4.5 [mm]": round(ref_val + d45_35, 1),
+                "Delta 2035 RCP 4.5 [mm]": round(d45_35, 1),
+                "2055 RCP 4.5 [mm]": round(ref_val + d45_55, 1),
+                "Delta 2055 RCP 4.5 [mm]": round(d45_55, 1),
+                "2035 RCP 8.5 [mm]": round(ref_val + d85_35, 1),
+                "Delta 2035 RCP 8.5 [mm]": round(d85_35, 1),
+                "2055 RCP 8.5 [mm]": round(ref_val + d85_55, 1),
+                "Delta 2055 RCP 8.5 [mm]": round(d85_55, 1),
+            }
+        )
+
+    df_summary = pd.DataFrame(summary_rows)
+    df_perc_rcp45 = build_percentile_table(deltas_rcp45, "RCP 4.5")
+    df_perc_rcp85 = build_percentile_table(deltas_rcp85, "RCP 8.5")
+
+    print("\n" + "=" * 90)
+    print("1. SEASONAL PRECIPITATION ENSEMBLE SUMMARY (RCP 4.5 vs. RCP 8.5)")
+    print("=" * 90)
+    print(df_summary.to_string(index=False))
+
+    print("\n" + "=" * 90)
+    print("2. PERCENTILE ANALYSIS RCP 4.5 (2055)")
+    print("=" * 90)
+    print(df_perc_rcp45.to_string(index=False))
+
+    print("\n" + "=" * 90)
+    print("3. PERCENTILE ANALYSIS RCP 8.5 (2055)")
+    print("=" * 90)
+    print(df_perc_rcp85.to_string(index=False))
+
+    output_excel = "seasonal_precipitation_analysis.xlsx"
+    abs_path = os.path.abspath(output_excel)
+
+    with pd.ExcelWriter(output_excel, engine="openpyxl") as writer:
+        df_summary.to_excel(
+            writer, sheet_name="Ensemble_Summary", index=False
+        )
+        df_perc_rcp45.to_excel(
+            writer, sheet_name="Percentiles_RCP45_2055", index=False
+        )
+        df_perc_rcp85.to_excel(
+            writer, sheet_name="Percentiles_RCP85_2055", index=False
+        )
+
+    print(f"\nExcel file saved to: {abs_path}")
+
+    try:
+        os.startfile(abs_path)
+        print("Opening Excel file...")
+    except Exception as e:
+        print(f"Could not open file automatically: {e}")
+
+
+if __name__ == "__main__":
+    main()
