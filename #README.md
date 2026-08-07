@@ -1,6 +1,6 @@
 # climate-risk-assessement
 Runterladen von DWD-Daten für Deutschland
-Erstellen von Muli-Klima-Ensemble von CDS
+Erstellen von Multi-Klima-Ensemble von CDS
 Klimaanalyse
 
 Automatisierte Skripte (Punkt Extraction dwd und cds, anschließende Analyse)
