@@ -1,0 +1,202 @@
+import os
+import sys
+import numpy as np
+import pandas as pd
+import xarray as xr
+
+# ==========================================
+# PFADE & KONFIGURATION
+# ==========================================
+paths = {
+    "dwd_5km": r"S:\KFE\Studenten\_NH\Klimarisikoanalyse\git\Maximum 2m temperature in the last 24 hours\dwd_cut\tmax_punkt3_wuerzburg.nc",
+    "rcp45_hist": r"S:\KFE\Studenten\_NH\Klimarisikoanalyse\git\Maximum 2m temperature in the last 24 hours\CDS_cut\hist_punkt",
+    "rcp45_proj": r"S:\KFE\Studenten\_NH\Klimarisikoanalyse\git\Maximum 2m temperature in the last 24 hours\CDS_cut\rcp4.5_punkt",
+    "rcp85_hist": r"S:\KFE\Studenten\_NH\Klimarisikoanalyse\git\Maximum 2m temperature in the last 24 hours\CDS_cut\hist_punkt",
+    "rcp85_proj": r"S:\KFE\Studenten\_NH\Klimarisikoanalyse\git\Maximum 2m temperature in the last 24 hours\CDS_cut\rcp8.5_punkt",
+}
+
+valid_models = ["ec_earth", "hadgem2_es", "m_mpi", "noresm1_m", "mpi_esm", "remo"]
+
+
+# ==========================================
+# HILFSFUNKTIONEN
+# ==========================================
+def get_clean_ts(path):
+    """Lädt Datei, mittelt räumlich und bereinigt die Zeitreihe."""
+    with xr.open_dataset(path) as ds:
+        v = next(
+            (
+                var
+                for var in ["tmax_c", "tasmax", "tmax", "air_temperature"]
+                if var in ds.data_vars
+            ),
+            list(ds.data_vars)[0],
+        )
+        da = ds[v].compute()
+        if len(da.dims) > 1:
+            da = da.mean(dim=[d for d in da.dims if d != "time"])
+        da = da.sortby("time")
+        da = da.sel(time=~da.get_index("time").duplicated())
+        if da.max() > 200:
+            da = da - 273.15
+        return da
+
+
+def calc_summer_mean_temp(da, start_yr, end_yr):
+    """Berechnet die Mitteltemperatur für die Sommermonate JJA (Juni, Juli, August)."""
+    try:
+        subset = da.sel(time=slice(str(start_yr), str(end_yr)))
+        summer = subset.sel(time=subset.time.dt.month.isin([6, 7, 8]))
+        return float(summer.mean())
+    except Exception:
+        return np.nan
+
+
+def get_scenario_deltas(h_path, p_path):
+    """Berechnet JJA-Deltas für 2035 (2021-2050) und 2055 (2041-2070) gegenüber der Historie (1971-2000)."""
+    deltas_2035, deltas_2055 = [], []
+    if not os.path.exists(p_path) or not os.path.exists(h_path):
+        return deltas_2035, deltas_2055
+
+    files = [f for f in os.listdir(p_path) if f.endswith(".nc")]
+    h_files = [h for h in os.listdir(h_path) if h.endswith(".nc")]
+
+    for f in files:
+        if not any(m in f.lower() for m in valid_models):
+            continue
+        try:
+            da_p = get_clean_ts(os.path.join(p_path, f))
+            val_p35 = calc_summer_mean_temp(da_p, 2021, 2050)
+            val_p55 = calc_summer_mean_temp(da_p, 2041, 2070)
+
+            m_id = f.split("_")[2].lower() if "_" in f else f[:4]
+            h_matches = [
+                h for h in h_files if m_id in h.lower() and h.endswith(".nc")
+            ]
+
+            if h_matches:
+                da_h = get_clean_ts(os.path.join(h_path, h_matches[0]))
+                val_h = calc_summer_mean_temp(da_h, 1971, 2000)
+
+                if not np.isnan(val_h):
+                    if not np.isnan(val_p35):
+                        deltas_2035.append(val_p35 - val_h)
+                    if not np.isnan(val_p55):
+                        deltas_2055.append(val_p55 - val_h)
+        except Exception as e:
+            print(f"Warnung bei Datei {f}: {e}")
+            continue
+
+    return deltas_2035, deltas_2055
+
+
+# ==========================================
+# HAUPTPROGRAMM
+# ==========================================
+def main():
+    # 1. Pfadprüfung
+    missing = [k for k, p in paths.items() if not os.path.exists(p)]
+    if missing:
+        print("❌ FEHLER: Folgende Pfade wurden nicht gefunden:")
+        for m in missing:
+            print(f"   - {m}: {paths[m]}")
+        sys.exit(1)
+
+    print("Starte Analyse der Sommer-Mitteltemperaturen (JJA) für Würzburg...")
+
+    # 2. DWD Basiswert
+    da_dwd = get_clean_ts(paths["dwd_5km"])
+    dwd_jja_ref = calc_summer_mean_temp(da_dwd, 1971, 2000)
+    print(f"DWD Referenzwert (1971-2000): {dwd_jja_ref:.2f} °C\n")
+
+    # 3. Deltas berechnen
+    d45_35, d45_55 = get_scenario_deltas(
+        paths["rcp45_hist"], paths["rcp45_proj"]
+    )
+    d85_35, d85_55 = get_scenario_deltas(
+        paths["rcp85_hist"], paths["rcp85_proj"]
+    )
+
+    # 4. TABELLE 1: Ensemble-Vergleich (RCP 4.5 vs RCP 8.5)
+    summary_data = [
+        {
+            "Zeithorizont": "2035 (2021-2050)",
+            "RCP4.5 Delta [K]": round(np.median(d45_35), 2) if d45_35 else None,
+            "RCP4.5 Temp [°C]": (
+                round(dwd_jja_ref + np.median(d45_35), 2) if d45_35 else None
+            ),
+            "RCP8.5 Delta [K]": round(np.median(d85_35), 2) if d85_35 else None,
+            "RCP8.5 Temp [°C]": (
+                round(dwd_jja_ref + np.median(d85_35), 2) if d85_35 else None
+            ),
+        },
+        {
+            "Zeithorizont": "2055 (2041-2070)",
+            "RCP4.5 Delta [K]": round(np.median(d45_55), 2) if d45_55 else None,
+            "RCP4.5 Temp [°C]": (
+                round(dwd_jja_ref + np.median(d45_55), 2) if d45_55 else None
+            ),
+            "RCP8.5 Delta [K]": round(np.median(d85_55), 2) if d85_55 else None,
+            "RCP8.5 Temp [°C]": (
+                round(dwd_jja_ref + np.median(d85_55), 2) if d85_55 else None
+            ),
+        },
+    ]
+    df_ensemble = pd.DataFrame(summary_data)
+
+    # 5. TABELLE 2: Perzentil-Berechnung für RCP 8.5 (Horizont 2055)
+    if d85_55:
+        p15_delta = np.percentile(d85_55, 15)
+        p50_delta = np.percentile(d85_55, 50)
+        p85_delta = np.percentile(d85_55, 85)
+
+        percentile_data = [
+            {
+                "Indikator (RCP 8.5 / 2055)": "Sommer-Mitteltemperatur (JJA)",
+                "15. Perzentil [°C]": round(dwd_jja_ref + p15_delta, 2),
+                "50. Perzentil [°C]": round(dwd_jja_ref + p50_delta, 2),
+                "85. Perzentil [°C]": round(dwd_jja_ref + p85_delta, 2),
+                "15. Perzentil Delta [K]": round(p15_delta, 2),
+                "50. Perzentil Delta [K]": round(p50_delta, 2),
+                "85. Perzentil Delta [K]": round(p85_delta, 2),
+            }
+        ]
+        df_percentiles = pd.DataFrame(percentile_data)
+    else:
+        df_percentiles = pd.DataFrame()
+
+    # Konsolen-Ausgabe
+    print("=" * 65)
+    print("ENSEMBLE-ÜBERSICHT SOMMER-MITTELTEMPERATUR (JJA)")
+    print("=" * 65)
+    print(df_ensemble.to_string(index=False))
+
+    print("\n" + "=" * 65)
+    print("PERZENTIL-ANALYSE RCP 8.5 (2055)")
+    print("=" * 65)
+    print(df_percentiles.to_string(index=False))
+
+    # 6. EXCEL EXPORT & ÖFFNEN
+    output_excel = "sommertemperaturen_wuerzburg.xlsx"
+    abs_path = os.path.abspath(output_excel)
+
+    with pd.ExcelWriter(output_excel, engine="openpyxl") as writer:
+        df_ensemble.to_excel(
+            writer, sheet_name="Ensemble_Summary", index=False
+        )
+        if not df_percentiles.empty:
+            df_percentiles.to_excel(
+                writer, sheet_name="RCP85_Perzentile", index=False
+            )
+
+    print(f"\nExcel-Datei erfolgreich gespeichert unter: {abs_path}")
+
+    try:
+        os.startfile(abs_path)
+        print("📂 Excel-Datei wird geöffnet...")
+    except Exception as e:
+        print(f"Datei konnte nicht automatisch geöffnet werden: {e}")
+
+
+if __name__ == "__main__":
+    main()
